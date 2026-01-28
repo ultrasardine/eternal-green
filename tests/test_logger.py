@@ -30,6 +30,11 @@ def test_log_entry_format_compliance_info(message):
         
         logger.log_activity(message)
         
+        # Close logger handlers to release file on Windows
+        for handler in logger.logger.handlers[:]:
+            handler.close()
+            logger.logger.removeHandler(handler)
+        
         log_content = log_path.read_text()
         
         # Verify format: [TIMESTAMP] [LEVEL] [COMPONENT] MESSAGE
@@ -59,6 +64,11 @@ def test_log_entry_format_compliance_error(message):
         
         logger.log_error(message)
         
+        # Close logger handlers to release file on Windows
+        for handler in logger.logger.handlers[:]:
+            handler.close()
+            logger.logger.removeHandler(handler)
+        
         log_content = log_path.read_text()
         
         pattern = r'^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] \[(ERROR)\] \[[\w_]+\] .+$'
@@ -80,6 +90,11 @@ def test_log_entry_format_compliance_warning(message):
         logger = ActivityLogger(str(log_path))
         
         logger.log_warning(message)
+        
+        # Close logger handlers to release file on Windows
+        for handler in logger.logger.handlers[:]:
+            handler.close()
+            logger.logger.removeHandler(handler)
         
         log_content = log_path.read_text()
         
