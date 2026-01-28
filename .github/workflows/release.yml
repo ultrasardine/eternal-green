@@ -18,6 +18,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Set up Linux display server
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb x11-utils libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0
+      
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
@@ -30,7 +35,7 @@ jobs:
         run: uv sync --extra dev
       
       - name: Run tests
-        run: uv run pytest
+        run: xvfb-run -a uv run pytest
   
   release:
     needs: test

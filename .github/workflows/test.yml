@@ -17,6 +17,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Set up Linux display server
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb x11-utils libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0
+      
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
@@ -28,13 +34,18 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra dev
       
-      - name: Run tests
+      - name: Run tests on Linux
+        if: runner.os == 'Linux'
+        run: xvfb-run -a uv run pytest -v
+      
+      - name: Run tests on macOS/Windows
+        if: runner.os != 'Linux'
         run: uv run pytest -v
       
       - name: Run tests with coverage
         if: matrix.os == 'ubuntu-latest'
         run: |
-          uv run pytest --cov=eternal_green --cov-report=xml --cov-report=term
+          xvfb-run -a uv run pytest --cov=eternal_green --cov-report=xml --cov-report=term
       
       - name: Upload coverage
         if: matrix.os == 'ubuntu-latest'
