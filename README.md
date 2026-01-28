@@ -9,6 +9,7 @@ Anti-idle application that prevents computer inactivity by simulating minimal us
 
 - 🖱️ **Configurable mouse movements** - Set custom movement distances
 - ⏱️ **Adjustable intervals** - Control how often activity is simulated
+- 🎲 **Random intervals** - Randomize timing between activities for more natural behavior
 - 🔇 **Silent mode** - Mouse-only movements without keystrokes
 - 📝 **Activity logging** - Track all simulations to a log file
 - 💬 **Real-time feedback** - Console output with success/error indicators
@@ -66,8 +67,10 @@ The CLI provides a menu with options to:
 3. Edit movement (pixels for mouse movement)
 4. Toggle silent mode (disable keystrokes)
 5. Edit log file path
-6. Start idle prevention
-7. Exit
+6. Toggle random interval (randomize timing for pattern prevention)
+7. Edit random interval range (set min/max seconds)
+8. Start idle prevention
+9. Exit
 
 ### Console Output
 
@@ -104,6 +107,27 @@ simulator = ActivitySimulator(config, logger)
 
 # Simulate activity once
 simulator.simulate_activity()
+```
+
+#### Using Random Intervals
+
+```python
+from eternal_green import ActivitySimulator, EternalGreenConfig, ActivityLogger
+
+# Configure with random intervals between 30-120 seconds
+config = EternalGreenConfig(
+    random_interval=True,
+    interval_range_min=30,
+    interval_range_max=120,
+    movement_pixels=10,
+    silent_mode=True
+)
+
+logger = ActivityLogger("~/activity.log")
+simulator = ActivitySimulator(config, logger)
+
+# Start the loop with randomized timing
+simulator.start_loop()
 ```
 
 #### Running Continuous Loop
@@ -160,10 +184,13 @@ Configuration is stored in `~/.eternal_green/config.json` with the following opt
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `interval_seconds` | int | 60 | Seconds between activity simulations (min: 1) |
-| `movement_pixels` | int | 10 | Pixels to move mouse (min: 1) |
+| `interval_seconds` | int | 60 | Seconds between activity simulations (min: 10, max: 3600) |
+| `movement_pixels` | int | 10 | Pixels to move mouse (min: 1, max: 100) |
 | `silent_mode` | bool | false | If true, only moves mouse (no keystrokes) |
 | `log_file_path` | str | `~/.eternal_green/activity.log` | Path to activity log file |
+| `random_interval` | bool | false | If true, randomizes interval between min and max range |
+| `interval_range_min` | int | 10 | Minimum seconds for random interval (min: 10, max: 3600) |
+| `interval_range_max` | int | 60 | Maximum seconds for random interval (min: 10, max: 3600) |
 
 ### Example Configuration File
 
@@ -172,7 +199,10 @@ Configuration is stored in `~/.eternal_green/config.json` with the following opt
   "interval_seconds": 60,
   "movement_pixels": 10,
   "silent_mode": false,
-  "log_file_path": "~/.eternal_green/activity.log"
+  "log_file_path": "~/.eternal_green/activity.log",
+  "random_interval": false,
+  "interval_range_min": 10,
+  "interval_range_max": 60
 }
 ```
 

@@ -1,5 +1,6 @@
 """Activity simulator for eternal-green."""
 
+import random
 import signal
 import threading
 from typing import Optional
@@ -78,6 +79,16 @@ class ActivitySimulator:
                 self.logger.log_error(error_msg)
             return False
 
+    def _get_next_interval(self) -> int:
+        """Get the next interval duration based on configuration.
+        
+        Returns:
+            Interval in seconds (random if enabled, fixed otherwise)
+        """
+        if self.config.random_interval:
+            return random.randint(self.config.interval_range_min, self.config.interval_range_max)
+        return self.config.interval_seconds
+    
     def start_loop(self) -> None:
         """Start the idle prevention loop.
         
@@ -91,7 +102,11 @@ class ActivitySimulator:
         self._original_sigint_handler = signal.getsignal(signal.SIGINT)
         signal.signal(signal.SIGINT, self._handle_sigint)
         
-        start_msg = f"Starting idle prevention loop (interval: {self.config.interval_seconds}s)"
+        if self.config.random_interval:
+            start_msg = f"Starting idle prevention loop (random interval: {self.config.interval_range_min}-{self.config.interval_range_max}s)"
+        else:
+            start_msg = f"Starting idle prevention loop (interval: {self.config.interval_seconds}s)"
+        
         print(f"▶ {start_msg}")
         if self.logger:
             self.logger.log_activity(start_msg)
@@ -100,8 +115,14 @@ class ActivitySimulator:
             while self._running:
                 self.simulate_activity()
                 
+                # Get next interval (random or fixed)
+                next_interval = self._get_next_interval()
+                
+                if self.config.random_interval:
+                    print(f"⏱ Next activity in {next_interval}s")
+                
                 # Wait for interval or stop event
-                if self._stop_event.wait(timeout=self.config.interval_seconds):
+                if self._stop_event.wait(timeout=next_interval):
                     break
         finally:
             self._cleanup()

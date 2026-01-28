@@ -14,6 +14,9 @@ class EternalGreenConfig:
     movement_pixels: int = 2
     silent_mode: bool = False
     log_file_path: str = "~/.eternal_green.log"
+    random_interval: bool = False
+    interval_range_min: int = 10
+    interval_range_max: int = 60
     
     def validate(self) -> list[str]:
         """Validate configuration values. Returns list of error messages."""
@@ -30,6 +33,18 @@ class EternalGreenConfig:
         
         if not isinstance(self.log_file_path, str) or not self.log_file_path:
             errors.append("log_file_path must be a non-empty string")
+        
+        if not isinstance(self.random_interval, bool):
+            errors.append(f"random_interval must be a boolean, got {type(self.random_interval).__name__}")
+        
+        if not isinstance(self.interval_range_min, int) or self.interval_range_min < 10 or self.interval_range_min > 3600:
+            errors.append(f"interval_range_min must be an integer between 10 and 3600, got {self.interval_range_min}")
+        
+        if not isinstance(self.interval_range_max, int) or self.interval_range_max < 10 or self.interval_range_max > 3600:
+            errors.append(f"interval_range_max must be an integer between 10 and 3600, got {self.interval_range_max}")
+        
+        if self.interval_range_min >= self.interval_range_max:
+            errors.append(f"interval_range_min ({self.interval_range_min}) must be less than interval_range_max ({self.interval_range_max})")
         
         return errors
 

@@ -97,3 +97,49 @@ def test_error_resilience(error_message, movement_pixels):
         
         # is_running should still be True (loop continues)
         assert simulator.is_running is True
+
+
+
+# Feature: eternal-green, Property 4: Random Interval Generation
+# **Validates: Random interval feature**
+@settings(max_examples=100)
+@given(
+    min_interval=st.integers(min_value=10, max_value=100),
+    max_interval=st.integers(min_value=101, max_value=3600)
+)
+def test_random_interval_generation(min_interval, max_interval):
+    """When random_interval is enabled, _get_next_interval returns value within configured range."""
+    config = EternalGreenConfig(
+        random_interval=True,
+        interval_range_min=min_interval,
+        interval_range_max=max_interval
+    )
+    simulator = ActivitySimulator(config)
+    
+    # Generate multiple intervals to test randomness
+    intervals = [simulator._get_next_interval() for _ in range(10)]
+    
+    # All intervals should be within the configured range
+    for interval in intervals:
+        assert min_interval <= interval <= max_interval
+    
+    # With enough samples, we should see some variation (not all the same)
+    # This is probabilistic but with 10 samples from a range of at least 2, 
+    # the chance of all being identical is extremely low
+    if max_interval - min_interval > 1:
+        assert len(set(intervals)) > 1, "Random intervals should vary"
+
+
+def test_fixed_interval_when_random_disabled():
+    """When random_interval is False, _get_next_interval returns fixed interval_seconds."""
+    config = EternalGreenConfig(
+        random_interval=False,
+        interval_seconds=120,
+        interval_range_min=10,
+        interval_range_max=60
+    )
+    simulator = ActivitySimulator(config)
+    
+    # Should always return the fixed interval
+    for _ in range(10):
+        assert simulator._get_next_interval() == 120
