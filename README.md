@@ -107,6 +107,9 @@ simulator = ActivitySimulator(config, logger)
 
 # Simulate activity once
 simulator.simulate_activity()
+
+# Simulate activity with next interval info (shows "next in Xs" in logs)
+simulator.simulate_activity(next_interval=60)
 ```
 
 #### Using Random Intervals
@@ -292,6 +295,10 @@ simulator = ActivitySimulator(config)
 success = simulator.simulate_activity()
 if success:
     print("Activity simulated successfully")
+
+# Simulate with timing info for next activity
+success = simulator.simulate_activity(next_interval=120)
+# Output: "✓ Activity simulation completed - mouse moved 15px (silent mode), next in 120s"
 ```
 
 ## Requirements

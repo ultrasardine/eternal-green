@@ -46,8 +46,11 @@ class ActivitySimulator:
         """Press a neutral key (shift) that doesn't affect applications."""
         pyautogui.press('shift')
     
-    def simulate_activity(self) -> bool:
+    def simulate_activity(self, next_interval: int = None) -> bool:
         """Perform one activity simulation cycle.
+        
+        Args:
+            next_interval: Optional next interval duration to include in logs
         
         Returns:
             True if simulation completed successfully, False otherwise
@@ -61,7 +64,12 @@ class ActivitySimulator:
                 self.press_key()
             
             mode_str = "silent mode" if self.config.silent_mode else "with keystroke"
-            message = f"Activity simulation completed - mouse moved {self.config.movement_pixels}px ({mode_str})"
+            
+            # Build message with interval info
+            if next_interval is not None:
+                message = f"Activity simulation completed - mouse moved {self.config.movement_pixels}px ({mode_str}), next in {next_interval}s"
+            else:
+                message = f"Activity simulation completed - mouse moved {self.config.movement_pixels}px ({mode_str})"
             
             # Print to console
             print(f"✓ {message}")
@@ -113,13 +121,11 @@ class ActivitySimulator:
         
         try:
             while self._running:
-                self.simulate_activity()
-                
                 # Get next interval (random or fixed)
                 next_interval = self._get_next_interval()
                 
-                if self.config.random_interval:
-                    print(f"⏱ Next activity in {next_interval}s")
+                # Simulate activity with interval info
+                self.simulate_activity(next_interval=next_interval)
                 
                 # Wait for interval or stop event
                 if self._stop_event.wait(timeout=next_interval):
