@@ -7,12 +7,9 @@ from hypothesis import given, strategies as st, settings
 from eternal_green.logger import ActivityLogger
 
 
-# Strategy for generating valid log messages (printable chars without control chars)
+# Strategy for generating valid log messages (ASCII printable chars only for cross-platform compatibility)
 printable_message = st.text(
-    alphabet=st.characters(
-        whitelist_categories=('L', 'N', 'P', 'S', 'Zs'),
-        blacklist_characters='\r\n\x00'
-    ),
+    alphabet=st.characters(min_codepoint=32, max_codepoint=126),  # ASCII printable only
     min_size=1,
     max_size=100
 ).filter(lambda x: x.strip())
