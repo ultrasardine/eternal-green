@@ -17,7 +17,7 @@ Example usage as a library:
     simulator.start_loop()
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from eternal_green.config import EternalGreenConfig, ConfigManager
 from eternal_green.logger import ActivityLogger, setup_logger
