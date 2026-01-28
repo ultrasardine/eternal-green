@@ -1,0 +1,45 @@
+[project]
+name = "eternal-green"
+version = "0.1.0"
+description = "Anti-idle application to prevent computer inactivity"
+readme = "README.md"
+requires-python = ">=3.13"
+license = {text = "MIT"}
+authors = [
+    {name = "Eternal Green Contributors"}
+]
+keywords = ["idle", "anti-idle", "automation", "activity", "simulator"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Desktop Environment",
+    "Topic :: System :: Monitoring",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "pyautogui>=0.9.54",
+]
+
+[project.urls]
+Homepage = "https://github.com/ultrasardine/eternal-green"
+Repository = "https://github.com/ultrasardine/eternal-green"
+Issues = "https://github.com/ultrasardine/eternal-green/issues"
+Changelog = "https://github.com/ultrasardine/eternal-green/releases"
+
+[project.optional-dependencies]
+dev = [
+    "hypothesis>=6.100.0",
+    "pytest>=8.0.0",
+]
+
+[project.scripts]
+eternal-green = "eternal_green.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
