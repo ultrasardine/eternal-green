@@ -1,7 +1,7 @@
 # Eternal-Green Makefile
 # Development tasks for the anti-idle application
 
-.PHONY: help install run test lint clean
+.PHONY: help install run tray test lint clean
 
 # Default target
 .DEFAULT_GOAL := help
@@ -18,6 +18,9 @@ install: ## Install project dependencies using UV
 
 run: ## Run the eternal-green CLI application
 	uv run eternal-green
+
+tray: ## Run the eternal-green system tray application
+	uv run eternal-green-tray
 
 ##@ Testing
 

@@ -23,6 +23,7 @@ from eternal_green.config import EternalGreenConfig, ConfigManager
 from eternal_green.logger import ActivityLogger, setup_logger
 from eternal_green.simulator import ActivitySimulator
 from eternal_green.cli import CLIInterface, main
+from eternal_green.tray import TrayIcon
 
 __all__ = [
     "EternalGreenConfig",
@@ -31,5 +32,6 @@ __all__ = [
     "setup_logger",
     "ActivitySimulator",
     "CLIInterface",
+    "TrayIcon",
     "main",
 ]
