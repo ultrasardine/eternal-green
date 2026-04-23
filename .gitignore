@@ -8,8 +8,14 @@ wheels/
 
 # Virtual environments
 .venv
+
 # Testing and cache directories
 .hypothesis/
 .kiro/
 .pytest_cache/
 .ruff_cache/
+
+# macOS build artifacts
+assets/icon.icns
+*.dmg
+*.spec.bak

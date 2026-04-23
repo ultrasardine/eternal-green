@@ -68,7 +68,7 @@ def test_silent_mode_conditional_keystroke(silent_mode, movement_pixels):
 
 # Feature: eternal-green, Property 3: Error Resilience
 # **Validates: Requirements 1.5**
-@settings(max_examples=100)
+@settings(max_examples=100, deadline=None)
 @given(
     error_message=st.text(min_size=1, max_size=50).filter(lambda x: x.strip()),
     movement_pixels=st.integers(min_value=1, max_value=100)

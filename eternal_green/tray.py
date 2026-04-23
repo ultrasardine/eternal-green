@@ -1,7 +1,7 @@
 """System tray interface for eternal-green.
 
 Cross-platform tray icon using pystray with start/stop controls,
-silent mode toggle, and status indicator.
+silent mode toggle, settings window, and status indicator.
 """
 
 import threading
@@ -10,13 +10,20 @@ from typing import Optional
 from PIL import Image, ImageDraw
 import pystray
 
-from eternal_green.config import ConfigManager
+from eternal_green.config import ConfigManager, EternalGreenConfig
 from eternal_green.logger import ActivityLogger
 from eternal_green.simulator import ActivitySimulator
 
 
 class TrayIcon:
-    """System tray icon with idle prevention controls."""
+    """System tray icon with idle prevention controls.
+
+    The ``run()`` method enters a loop that alternates between the
+    pystray event loop and (optionally) a tkinter settings window.
+    When the user clicks *Settings…*, pystray is stopped so that
+    tkinter can take over the main thread — a macOS requirement.
+    After the settings window closes, pystray is restarted.
+    """
 
     ICON_SIZE = 64
     COLOR_STOPPED = "#808080"
@@ -35,6 +42,14 @@ class TrayIcon:
         self._sim_thread: Optional[threading.Thread] = None
         self._icon: Optional[pystray.Icon] = None
 
+        # Flags checked after pystray's run loop exits
+        self._wants_settings = False
+        self._app_running = True
+
+    # ------------------------------------------------------------------
+    # Icon helpers
+    # ------------------------------------------------------------------
+
     def _create_icon_image(self, color: str) -> Image.Image:
         """Create a filled circle icon with the given color."""
         img = Image.new("RGBA", (self.ICON_SIZE, self.ICON_SIZE), (0, 0, 0, 0))
@@ -45,6 +60,10 @@ class TrayIcon:
             fill=color,
         )
         return img
+
+    # ------------------------------------------------------------------
+    # Menu
+    # ------------------------------------------------------------------
 
     def _build_menu(self) -> pystray.Menu:
         """Build the tray context menu."""
@@ -66,6 +85,8 @@ class TrayIcon:
                 self._toggle_silent,
             ),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Settings…", self._open_settings),
+            pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit", self._quit),
         )
 
@@ -76,6 +97,10 @@ class TrayIcon:
         color = self.COLOR_RUNNING if self.simulator.is_running else self.COLOR_STOPPED
         self._icon.icon = self._create_icon_image(color)
         self._icon.menu = self._build_menu()
+
+    # ------------------------------------------------------------------
+    # Actions
+    # ------------------------------------------------------------------
 
     def _toggle(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
         """Start or stop idle prevention."""
@@ -103,23 +128,92 @@ class TrayIcon:
         self.simulator.config = self.config
         self._update_icon()
 
+    def _open_settings(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
+        """Request the settings window.
+
+        Sets a flag and stops pystray so that ``run()`` can open the
+        tkinter settings window on the main thread.
+        """
+        self._wants_settings = True
+        icon.stop()
+
+    def _show_settings_window(self) -> None:
+        """Open the tkinter settings window on the main thread.
+
+        Called by ``run()`` after pystray has released the main thread.
+        """
+        from eternal_green.settings_window import SettingsWindow
+
+        old_config = self.config
+
+        window = SettingsWindow(self.config_manager)
+        window.open()  # blocks until the window is closed
+
+        # Reload config — the user may have saved changes
+        new_config = self.config_manager.load()
+        if new_config != old_config:
+            self._apply_config(new_config)
+
+    def _apply_config(self, new_config: EternalGreenConfig) -> None:
+        """Apply a new configuration, restarting the simulator if needed."""
+        self.config = new_config
+
+        if self.simulator.is_running:
+            self.simulator.stop()
+            if self._sim_thread:
+                self._sim_thread.join(timeout=5)
+
+            self.logger = ActivityLogger(new_config.log_file_path)
+            self.simulator = ActivitySimulator(new_config, self.logger)
+            self._sim_thread = threading.Thread(
+                target=self.simulator.start_loop, daemon=True
+            )
+            self._sim_thread.start()
+        else:
+            self.logger = ActivityLogger(new_config.log_file_path)
+            self.simulator = ActivitySimulator(new_config, self.logger)
+
     def _quit(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
         """Stop simulator and exit tray."""
         if self.simulator.is_running:
             self.simulator.stop()
             if self._sim_thread:
                 self._sim_thread.join(timeout=5)
+        self._app_running = False
         icon.stop()
 
+    # ------------------------------------------------------------------
+    # Entry
+    # ------------------------------------------------------------------
+
     def run(self) -> None:
-        """Start the system tray icon (blocking)."""
-        self._icon = pystray.Icon(
-            name="eternal-green",
-            icon=self._create_icon_image(self.COLOR_STOPPED),
-            title="Eternal Green",
-            menu=self._build_menu(),
-        )
-        self._icon.run()
+        """Start the system tray icon (blocking).
+
+        Runs in a loop: pystray handles the menu bar icon until the
+        user clicks *Settings…* (which stops pystray), then tkinter
+        takes over the main thread for the settings window, and
+        finally pystray is restarted.  The loop exits when the user
+        clicks *Quit*.
+        """
+        while self._app_running:
+            self._icon = pystray.Icon(
+                name="eternal-green",
+                icon=self._create_icon_image(
+                    self.COLOR_RUNNING
+                    if self.simulator.is_running
+                    else self.COLOR_STOPPED
+                ),
+                title="Eternal Green",
+                menu=self._build_menu(),
+            )
+            self._icon.run()
+
+            # pystray stopped — check why
+            if self._wants_settings:
+                self._wants_settings = False
+                self._show_settings_window()
+                # Loop back to restart pystray
+            # else: _quit was called, _app_running is False → exit loop
 
 
 def main() -> None:

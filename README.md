@@ -14,11 +14,21 @@ Anti-idle application that prevents computer inactivity by simulating minimal us
 - 📝 **Activity logging** - Track all simulations to a log file
 - 💬 **Real-time feedback** - Console output with success/error indicators
 - ⚙️ **Interactive CLI** - Easy configuration management
+- 🪟 **GUI Settings Window** - Tkinter-based settings dialog accessible from the system tray
+- 🍎 **macOS Distribution** - Self-contained .app bundle with DMG installer
 - 🔌 **Library integration** - Use as a Python package in your projects
 
 ## Installation
 
-### As a Standalone Application
+### macOS App (Recommended)
+
+Download the latest `EternalGreen-X.Y.Z.dmg` from [Releases](https://github.com/ultrasardine/eternal-green/releases), open it, and drag **Eternal Green** to your Applications folder.
+
+On first launch macOS will ask you to grant **Accessibility** permissions (System Settings → Privacy & Security → Accessibility). This is required for mouse movement simulation.
+
+The app runs as a menu-bar icon only — no Dock icon, no terminal window.
+
+### From Source
 
 ```bash
 # Clone the repository
@@ -42,10 +52,28 @@ uv pip install git+https://github.com/ultrasardine/eternal-green.git
 # Clone and install with dev dependencies
 git clone https://github.com/ultrasardine/eternal-green.git
 cd eternal-green
-uv sync --extra dev
+uv sync --all-extras
 ```
 
 ## Usage
+
+### System Tray (macOS App / `eternal-green-tray`)
+
+The tray app lives in the macOS menu bar as a colored circle (gray = stopped, green = running). Right-click or click the icon to access:
+
+| Menu Item | Description |
+|-----------|-------------|
+| **Status** | Shows whether idle prevention is running or stopped |
+| **Start / Stop** | Toggle idle prevention on or off |
+| **Silent Mode** | Toggle keystroke simulation (mouse-only when on) |
+| **Settings…** | Open the GUI settings window to edit all options |
+| **Quit** | Stop the simulator and exit |
+
+Run from source:
+
+```bash
+uv run eternal-green-tray
+```
 
 ### Interactive CLI
 
@@ -80,7 +108,7 @@ The application provides real-time feedback during operation:
 - `✗ Error during activity simulation: ...` - If errors occur
 - `■ Graceful shutdown initiated` - When stopping
 
-All activity is also logged to the configured log file (default: `~/.eternal_green/activity.log`).
+All activity is also logged to the configured log file (default: `~/.eternal_green.log`).
 
 ### Library Integration
 
@@ -149,6 +177,33 @@ except KeyboardInterrupt:
     print("Stopped by user")
 ```
 
+#### Settings Window
+
+Open the GUI settings dialog as a standalone process:
+
+```bash
+uv run python -m eternal_green.settings_window
+```
+
+Or open it programmatically:
+
+```python
+from eternal_green.settings_window import SettingsWindow
+from eternal_green.config import ConfigManager
+
+config_manager = ConfigManager()
+
+def on_config_saved(new_config):
+    print(f"Config updated: interval={new_config.interval_seconds}s")
+
+window = SettingsWindow(config_manager, on_save=on_config_saved)
+window.open()
+```
+
+The settings window allows editing all configuration options — interval, movement pixels, silent mode, random interval range, and log file path — through a native tkinter dialog. It is also accessible from the system tray menu via **Settings…**, or launched directly as a standalone module.
+
+> **Note:** On macOS, clicking **Settings…** temporarily stops the tray icon so that tkinter can run on the main thread (a macOS requirement). The tray icon restarts automatically after the settings window is closed.
+
 #### Configuration Management
 
 ```python
@@ -164,7 +219,7 @@ new_config = config_manager.update(
     silent_mode=True
 )
 
-# Configuration is automatically saved to ~/.eternal_green/config.json
+# Configuration is automatically saved to ~/.eternal_green_config.json
 ```
 
 #### Custom Logger Setup
@@ -183,14 +238,14 @@ logger.info("Custom log message")
 
 ## Configuration
 
-Configuration is stored in `~/.eternal_green/config.json` with the following options:
+Configuration is stored in `~/.eternal_green_config.json` with the following options:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `interval_seconds` | int | 60 | Seconds between activity simulations (min: 10, max: 3600) |
-| `movement_pixels` | int | 10 | Pixels to move mouse (min: 1, max: 100) |
+| `interval_seconds` | int | 300 | Seconds between activity simulations (min: 10, max: 3600) |
+| `movement_pixels` | int | 2 | Pixels to move mouse (min: 1, max: 100) |
 | `silent_mode` | bool | false | If true, only moves mouse (no keystrokes) |
-| `log_file_path` | str | `~/.eternal_green/activity.log` | Path to activity log file |
+| `log_file_path` | str | `~/.eternal_green.log` | Path to activity log file |
 | `random_interval` | bool | false | If true, randomizes interval between min and max range |
 | `interval_range_min` | int | 10 | Minimum seconds for random interval (min: 10, max: 3600) |
 | `interval_range_max` | int | 60 | Maximum seconds for random interval (min: 10, max: 3600) |
@@ -199,15 +254,50 @@ Configuration is stored in `~/.eternal_green/config.json` with the following opt
 
 ```json
 {
-  "interval_seconds": 60,
-  "movement_pixels": 10,
+  "interval_seconds": 300,
+  "movement_pixels": 2,
   "silent_mode": false,
-  "log_file_path": "~/.eternal_green/activity.log",
+  "log_file_path": "~/.eternal_green.log",
   "random_interval": false,
   "interval_range_min": 10,
   "interval_range_max": 60
 }
 ```
+
+## macOS Distribution
+
+### Building the .app Bundle
+
+```bash
+# Install build dependencies
+uv sync --extra build
+
+# Build everything: icon → .app → DMG
+make dist
+```
+
+Or step by step:
+
+```bash
+make icon    # Generate assets/icon.icns
+make build   # PyInstaller → dist/Eternal Green.app
+make dmg     # Package into dist/EternalGreen-X.Y.Z.dmg
+```
+
+### How It Works
+
+The `.app` bundle is built with [PyInstaller](https://pyinstaller.org/) using the `eternal_green.spec` configuration:
+
+- **Entry point**: `eternal_green/tray.py` — the app launches directly into the menu bar
+- **Main-thread loop**: pystray and tkinter alternate on the main thread (no multiprocessing) for reliable macOS compatibility
+- **LSUIElement**: set to `True` so the app has no Dock icon
+- **Bundle ID**: `com.eternalgreen.app`
+- **Python runtime**: fully embedded — no Python installation required on the target Mac
+- **Minimum macOS**: 10.15 (Catalina)
+
+### Accessibility Permissions
+
+`pyautogui` requires Accessibility access to control the mouse and keyboard. On first launch macOS will prompt you to allow it. If the prompt doesn't appear, go to **System Settings → Privacy & Security → Accessibility** and add Eternal Green manually.
 
 ## Examples
 
@@ -305,10 +395,12 @@ success = simulator.simulate_activity(next_interval=120)
 
 - Python 3.13 or higher
 - `pyautogui` - Cross-platform GUI automation
+- `pystray` - System tray icon
+- `Pillow` - Icon rendering
 
 ### System Requirements
 
-- **macOS**: No additional setup required
+- **macOS**: Accessibility permissions required (System Settings → Privacy & Security → Accessibility)
 - **Linux**: May require `python3-tk`, `python3-dev`, `scrot`, `xdotool`
 - **Windows**: No additional setup required
 
@@ -327,25 +419,44 @@ uv run pytest --cov=eternal_green
 uv run pytest tests/test_simulator.py
 ```
 
+### Available Make Targets
+
+```bash
+make help      # Show all targets
+make install   # Install all dependencies
+make run       # Run CLI
+make tray      # Run tray app
+make test      # Run tests
+make lint      # Run ruff linter
+make icon      # Generate macOS .icns icon
+make build     # Build .app bundle
+make dmg       # Create DMG installer
+make dist      # Full distribution build
+make clean     # Remove build artifacts
+```
+
 ### Project Structure
 
 ```
 eternal-green/
+├── assets/                 # Generated app icon (.icns)
 ├── eternal_green/          # Main package
-│   ├── __init__.py        # Package exports
-│   ├── __main__.py        # Module entry point
-│   ├── cli.py             # Interactive CLI
-│   ├── config.py          # Configuration management
-│   ├── logger.py          # Logging functionality
-│   └── simulator.py       # Activity simulation
-├── tests/                 # Test suite
-├── CODE_OF_CONDUCT.md     # Community guidelines
-├── CONTRIBUTING.md        # Contribution guidelines
-├── LICENSE                # MIT License
-├── README.md              # This file
-├── SECURITY.md            # Security policy
-└── pyproject.toml         # Project metadata
-
+│   ├── __init__.py         # Package exports
+│   ├── __main__.py         # Module entry point
+│   ├── cli.py              # Interactive CLI
+│   ├── config.py           # Configuration management
+│   ├── logger.py           # Logging functionality
+│   ├── settings_window.py  # GUI settings dialog (tkinter)
+│   ├── simulator.py        # Activity simulation
+│   └── tray.py             # System tray integration
+├── scripts/                # Build & packaging scripts
+│   ├── build_dmg.sh        # DMG creation script
+│   └── create_icns.py      # macOS icon generator
+├── tests/                  # Test suite
+├── eternal_green.spec      # PyInstaller macOS build config
+├── Makefile                # Development & build tasks
+├── pyproject.toml          # Project metadata & dependencies
+└── README.md               # This file
 ```
 
 ## Contributing
@@ -377,5 +488,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 Built with:
 - [pyautogui](https://github.com/asweigart/pyautogui) - GUI automation
+- [pystray](https://github.com/moses-palmer/pystray) - System tray icons
+- [PyInstaller](https://pyinstaller.org/) - Standalone executable packaging
 - [pytest](https://pytest.org/) - Testing framework
 - [hypothesis](https://hypothesis.readthedocs.io/) - Property-based testing
+- [ruff](https://docs.astral.sh/ruff/) - Linting and code quality

@@ -130,12 +130,12 @@ class CLIInterface:
         print(f"\nCurrent interval range: {config.interval_range_min}-{config.interval_range_max}s")
         
         try:
-            min_input = input(f"Enter minimum interval (seconds, 10-3600): ").strip()
+            min_input = input("Enter minimum interval (seconds, 10-3600): ").strip()
             if not min_input:
                 print("No value entered. Keeping current values.")
                 return False
             
-            max_input = input(f"Enter maximum interval (seconds, 10-3600): ").strip()
+            max_input = input("Enter maximum interval (seconds, 10-3600): ").strip()
             if not max_input:
                 print("No value entered. Keeping current values.")
                 return False
