@@ -23,18 +23,43 @@ a = Analysis(
         "pystray._darwin",
         # Settings window launched as subprocess via -m
         "eternal_green.settings_window",
-        # Pillow image plugins used at runtime
-        "PIL._tkinter_finder",
         # tkinter for the settings window subprocess
         "tkinter",
         "tkinter.ttk",
         "tkinter.filedialog",
         "tkinter.messagebox",
+        # pyautogui macOS backend and dependencies
+        "pyautogui",
+        "pyautogui._pyautogui_osx",
+        "pytweening",
+        "pyscreeze",
+        # pyobjc frameworks required by pyautogui on macOS
+        "objc",
+        "AppKit",
+        "Foundation",
+        "CoreFoundation",
+        "Quartz",
+        "Quartz.CoreGraphics",
+        # rubicon ObjC bridge (used by mouseinfo)
+        "rubicon",
+        "rubicon.objc",
+        "rubicon.objc.api",
+        "rubicon.objc.runtime",
+        "rubicon.objc.types",
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        # pymsgbox and mouseinfo (pyautogui deps) import tkinter at
+        # module level in the main process, which crashes because
+        # pystray owns the NSApplication.  pyautogui handles their
+        # absence gracefully.  tkinter itself stays bundled for the
+        # settings subprocess.
+        "pymsgbox",
+        "mouseinfo",
+        "PIL._tkinter_finder",
+    ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,

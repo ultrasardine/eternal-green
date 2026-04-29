@@ -15,6 +15,9 @@ wheels/
 .pytest_cache/
 .ruff_cache/
 
+# IDE
+.idea/
+
 # macOS build artifacts
 assets/icon.icns
 *.dmg

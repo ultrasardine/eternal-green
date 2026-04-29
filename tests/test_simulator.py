@@ -21,14 +21,14 @@ def test_mouse_movement_round_trip(start_x, start_y, movement_pixels):
     simulator = ActivitySimulator(config)
     
     with patch('eternal_green.simulator.pyautogui') as mock_pyautogui:
-        # Set up mock to return starting position
-        mock_pyautogui.position.return_value = (start_x, start_y)
+        # position() returns start pos first, then moved pos, then start again
+        mock_pyautogui.position.side_effect = [
+            (start_x, start_y),
+            (start_x + movement_pixels, start_y + movement_pixels),
+        ]
         
         # Call move_mouse
         simulator.move_mouse(movement_pixels)
-        
-        # Verify position was captured
-        mock_pyautogui.position.assert_called_once()
         
         # Verify moveRel was called with the pixels
         mock_pyautogui.moveRel.assert_called_once_with(movement_pixels, movement_pixels, duration=0)
@@ -51,7 +51,10 @@ def test_silent_mode_conditional_keystroke(silent_mode, movement_pixels):
     simulator = ActivitySimulator(config)
     
     with patch('eternal_green.simulator.pyautogui') as mock_pyautogui:
-        mock_pyautogui.position.return_value = (500, 500)
+        mock_pyautogui.position.side_effect = [
+            (500, 500),
+            (500 + movement_pixels, 500 + movement_pixels),
+        ]
         
         # Call simulate_activity
         simulator.simulate_activity()

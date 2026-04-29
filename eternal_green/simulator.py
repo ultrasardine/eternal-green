@@ -1,5 +1,9 @@
 """Activity simulator for eternal-green."""
 
+import ctypes
+import ctypes.util
+import logging
+import platform
 import random
 import signal
 import threading
@@ -9,6 +13,25 @@ import pyautogui
 
 from eternal_green.config import EternalGreenConfig
 from eternal_green.logger import ActivityLogger
+
+_log = logging.getLogger(__name__)
+
+
+def _check_accessibility() -> bool:
+    """Check if the process has macOS Accessibility permissions.
+
+    Returns ``True`` on non-macOS platforms or when permissions are granted.
+    """
+    if platform.system() != "Darwin":
+        return True
+    try:
+        lib = ctypes.cdll.LoadLibrary(
+            "/System/Library/Frameworks/ApplicationServices.framework"
+            "/ApplicationServices"
+        )
+        return bool(lib.AXIsProcessTrusted())
+    except OSError:
+        return True  # can't check — assume OK
 
 
 class ActivitySimulator:
@@ -26,18 +49,32 @@ class ActivitySimulator:
         self._running = False
         self._stop_event = threading.Event()
         self._original_sigint_handler = None
+        self._consecutive_failures = 0
     
     def move_mouse(self, pixels: int) -> None:
         """Move mouse by specified pixels and return to original position.
         
         Args:
             pixels: Number of pixels to move
+        
+        Raises:
+            RuntimeError: If the mouse did not actually move (e.g. missing
+                Accessibility permissions on macOS).
         """
         # Get current position
         original_x, original_y = pyautogui.position()
         
         # Move mouse by specified pixels
         pyautogui.moveRel(pixels, pixels, duration=0)
+        
+        # Verify the mouse actually moved
+        new_x, new_y = pyautogui.position()
+        if new_x == original_x and new_y == original_y:
+            raise RuntimeError(
+                "Mouse did not move — Accessibility permissions may not be "
+                "granted. Go to System Settings → Privacy & Security → "
+                "Accessibility and add Eternal Green."
+            )
         
         # Return to original position
         pyautogui.moveTo(original_x, original_y, duration=0)
@@ -78,13 +115,16 @@ class ActivitySimulator:
             if self.logger:
                 self.logger.log_activity(message)
             
+            self._consecutive_failures = 0
             return True
             
         except Exception as e:
+            self._consecutive_failures += 1
             error_msg = f"Error during activity simulation: {e}"
             print(f"✗ {error_msg}")
             if self.logger:
                 self.logger.log_error(error_msg)
+            _log.exception("Activity simulation failed")
             return False
 
     def _get_next_interval(self) -> int:
@@ -106,9 +146,21 @@ class ActivitySimulator:
         self._running = True
         self._stop_event.clear()
         
-        # Set up signal handler for graceful shutdown
-        self._original_sigint_handler = signal.getsignal(signal.SIGINT)
-        signal.signal(signal.SIGINT, self._handle_sigint)
+        # Set up signal handler for graceful shutdown (only works in main thread)
+        if threading.current_thread() is threading.main_thread():
+            self._original_sigint_handler = signal.getsignal(signal.SIGINT)
+            signal.signal(signal.SIGINT, self._handle_sigint)
+        
+        # Warn early if Accessibility permissions are missing
+        if not _check_accessibility():
+            warn_msg = (
+                "Accessibility permissions not granted — mouse/keyboard "
+                "simulation will not work. Go to System Settings → Privacy "
+                "& Security → Accessibility and add Eternal Green."
+            )
+            print(f"⚠ {warn_msg}")
+            if self.logger:
+                self.logger.log_warning(warn_msg)
         
         if self.config.random_interval:
             start_msg = f"Starting idle prevention loop (random interval: {self.config.interval_range_min}-{self.config.interval_range_max}s)"
@@ -153,7 +205,7 @@ class ActivitySimulator:
     
     def _cleanup(self) -> None:
         """Restore original signal handler."""
-        if self._original_sigint_handler is not None:
+        if self._original_sigint_handler is not None and threading.current_thread() is threading.main_thread():
             signal.signal(signal.SIGINT, self._original_sigint_handler)
             self._original_sigint_handler = None
     
