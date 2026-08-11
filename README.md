@@ -7,7 +7,7 @@ Anti-idle application that prevents computer inactivity by simulating minimal us
 
 ## Features
 
-- 🖱️ **Natural mouse movements** - Random diagonal movement with screen-edge bounce logic
+- 🖱️ **Natural mouse movements** - Smooth animated movements with screen-edge bounce logic
 - ⏱️ **Adjustable intervals** - Control how often activity is simulated
 - 🎲 **Random intervals** - Randomize timing between activities for more natural behavior
 - 🔇 **Silent mode** - Mouse-only movements without keystrokes
@@ -97,8 +97,9 @@ The CLI provides a menu with options to:
 5. Edit log file path
 6. Toggle random interval (randomize timing for pattern prevention)
 7. Edit random interval range (set min/max seconds)
-8. Start idle prevention
-9. Exit
+8. Edit movement pattern (choose from: `random_direction`, `return_to_source`, `bounce`)
+9. Start idle prevention
+10. Exit
 
 ### Console Output
 
@@ -200,7 +201,7 @@ window = SettingsWindow(config_manager, on_save=on_config_saved)
 window.open()
 ```
 
-The settings window allows editing all configuration options — interval, movement pixels, silent mode, random interval range, and log file path — through a native tkinter dialog. It is also accessible from the system tray menu via **Settings…**, or launched directly as a standalone module.
+The settings window allows editing all configuration options — interval, movement pixels, silent mode, random interval range, movement pattern, and log file path — through a native tkinter dialog. It is also accessible from the system tray menu via **Settings…**, or launched directly as a standalone module.
 
 > **Note:** On macOS, clicking **Settings…** temporarily stops the tray icon so that tkinter can run on the main thread (a macOS requirement). The tray icon restarts automatically after the settings window is closed.
 
@@ -249,6 +250,7 @@ Configuration is stored in `~/.eternal_green_config.json` with the following opt
 | `random_interval` | bool | false | If true, randomizes interval between min and max range |
 | `interval_range_min` | int | 10 | Minimum seconds for random interval (min: 10, max: 3600) |
 | `interval_range_max` | int | 60 | Maximum seconds for random interval (min: 10, max: 3600) |
+| `movement_pattern` | str | `random_direction` | Movement pattern for mouse simulation. Valid values: `random_direction`, `return_to_source` (visible animated excursion then glide back), `bounce` |
 
 ### Example Configuration File
 
@@ -260,7 +262,8 @@ Configuration is stored in `~/.eternal_green_config.json` with the following opt
   "log_file_path": "~/.eternal_green.log",
   "random_interval": false,
   "interval_range_min": 10,
-  "interval_range_max": 60
+  "interval_range_max": 60,
+  "movement_pattern": "random_direction"
 }
 ```
 

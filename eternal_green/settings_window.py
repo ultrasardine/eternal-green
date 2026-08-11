@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Optional, Callable
 
-from eternal_green.config import ConfigManager, EternalGreenConfig
+from eternal_green.config import ConfigManager, EternalGreenConfig, VALID_MOVEMENT_PATTERNS
 
 if TYPE_CHECKING:
     import tkinter as tk
@@ -50,6 +50,7 @@ class SettingsWindow:
         self._range_min_spin: Any = None
         self._range_max_spin: Any = None
         self._log_var: Any = None
+        self._pattern_var: Any = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -199,6 +200,21 @@ class SettingsWindow:
         )
         row += 1
 
+        # --- Movement pattern ---
+        ttk.Label(main_frame, text="Movement pattern:").grid(
+            row=row, column=0, sticky=tk.W, pady=(0, 4)
+        )
+        self._pattern_var = tk.StringVar(value=config.movement_pattern)
+        pattern_combo = ttk.Combobox(
+            main_frame,
+            textvariable=self._pattern_var,
+            values=list(VALID_MOVEMENT_PATTERNS),
+            state="readonly",
+            width=18,
+        )
+        pattern_combo.grid(row=row, column=1, sticky=tk.E, pady=(0, 4))
+        row += 1
+
         # --- Buttons ---
         btn_frame = ttk.Frame(main_frame)
         btn_frame.grid(row=row, column=0, columnspan=2, sticky=tk.E, pady=(12, 0))
@@ -249,6 +265,7 @@ class SettingsWindow:
                 interval_range_min=self._range_min_var.get(),
                 interval_range_max=self._range_max_var.get(),
                 log_file_path=self._log_var.get(),
+                movement_pattern=self._pattern_var.get(),
             )
         except ValueError as exc:
             messagebox.showerror("Validation Error", str(exc), parent=self._window)

@@ -1,9 +1,11 @@
 """Configuration management for eternal-green."""
 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, fields
 from pathlib import Path
 from typing import Optional
 import json
+
+VALID_MOVEMENT_PATTERNS: tuple[str, ...] = ("random_direction", "return_to_source", "bounce")
 
 
 @dataclass
@@ -17,6 +19,7 @@ class EternalGreenConfig:
     random_interval: bool = False
     interval_range_min: int = 10
     interval_range_max: int = 60
+    movement_pattern: str = "random_direction"
     
     def validate(self) -> list[str]:
         """Validate configuration values. Returns list of error messages."""
@@ -46,6 +49,12 @@ class EternalGreenConfig:
         if self.interval_range_min >= self.interval_range_max:
             errors.append(f"interval_range_min ({self.interval_range_min}) must be less than interval_range_max ({self.interval_range_max})")
         
+        if self.movement_pattern not in VALID_MOVEMENT_PATTERNS:
+            errors.append(
+                f"movement_pattern must be one of {VALID_MOVEMENT_PATTERNS}, "
+                f"got '{self.movement_pattern}'"
+            )
+        
         return errors
 
 
@@ -65,7 +74,10 @@ class ConfigManager:
             try:
                 with open(self.config_path, 'r') as f:
                     data = json.load(f)
-                self._config = EternalGreenConfig(**data)
+                # Filter to only known fields for forward/backward compat
+                known_fields = {f.name for f in fields(EternalGreenConfig)}
+                filtered_data = {k: v for k, v in data.items() if k in known_fields}
+                self._config = EternalGreenConfig(**filtered_data)
             except (json.JSONDecodeError, TypeError):
                 self._config = EternalGreenConfig()
                 self.save(self._config)

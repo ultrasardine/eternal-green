@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from eternal_green.config import ConfigManager, EternalGreenConfig
+from eternal_green.config import ConfigManager, EternalGreenConfig, VALID_MOVEMENT_PATTERNS
 from eternal_green.simulator import ActivitySimulator
 from eternal_green.logger import ActivityLogger
 
@@ -45,8 +45,9 @@ class CLIInterface:
         print("5. Edit log file path")
         print("6. Toggle random interval")
         print("7. Edit random interval range")
-        print("8. Start idle prevention")
-        print("9. Exit")
+        print("8. Edit movement pattern")
+        print("9. Start idle prevention")
+        print("10. Exit")
         print()
     
     def display_config(self) -> str:
@@ -65,6 +66,7 @@ class CLIInterface:
         output.append(f"random_interval: {config.random_interval}")
         if config.random_interval:
             output.append(f"interval_range: {config.interval_range_min}-{config.interval_range_max}s")
+        output.append(f"movement_pattern: {config.movement_pattern}")
         output.append("-----------------------------")
         
         result = "\n".join(output)
@@ -167,6 +169,34 @@ class CLIInterface:
             print(f"Error updating configuration: {e}")
             return False
     
+    def edit_movement_pattern(self) -> bool:
+        """Prompt user to edit the movement pattern.
+        
+        Returns:
+            True if edit was successful, False otherwise
+        """
+        config = self.config
+        print(f"\nCurrent movement_pattern: {config.movement_pattern}")
+        print(f"Valid options: {', '.join(VALID_MOVEMENT_PATTERNS)}")
+
+        user_input = input("Enter new movement pattern: ").strip()
+        if not user_input:
+            print("No value entered. Keeping current value.")
+            return False
+
+        if user_input not in VALID_MOVEMENT_PATTERNS:
+            print(f"Error: Invalid pattern '{user_input}'. Must be one of: {', '.join(VALID_MOVEMENT_PATTERNS)}")
+            return False
+
+        old_value = config.movement_pattern
+        self._config = self.config_manager.update(movement_pattern=user_input)
+
+        if self.logger:
+            self.logger.log_config_change("movement_pattern", old_value, user_input)
+
+        print(f"Updated movement_pattern: {old_value} -> {user_input}")
+        return True
+
     def handle_input(self, choice: str) -> bool:
         """Handle user menu selection.
         
@@ -193,12 +223,14 @@ class CLIInterface:
         elif choice == "7":
             self.edit_interval_range()
         elif choice == "8":
-            self._start_simulator()
+            self.edit_movement_pattern()
         elif choice == "9":
+            self._start_simulator()
+        elif choice == "10":
             print("Exiting...")
             return False
         else:
-            print("Invalid option. Please enter a number 1-9.")
+            print("Invalid option. Please enter a number 1-10.")
         
         return True
     

@@ -405,3 +405,266 @@ def test_movement_verification_detects_no_move(start_x, start_y, movement_pixels
 
         # moveTo should still have been called (the move was attempted)
         mock_pyautogui.moveTo.assert_called_once()
+
+
+
+# Feature: movement-patterns, Property 4: Return to Source Is a Position Round-Trip
+# **Validates: Requirements 3.1, 3.2, 3.4**
+@settings(max_examples=100, deadline=None)
+@given(
+    movement_pixels=st.integers(min_value=1, max_value=100),
+    data=st.data(),
+)
+def test_return_to_source_round_trip(movement_pixels, data):
+    """For any valid starting cursor position within the usable area, executing a full
+    _move_return_to_source cycle SHALL result in the cursor returning to the exact
+    original position."""
+    excursion = min(movement_pixels * 20, 100)
+    screen_width = data.draw(
+        st.integers(min_value=3 * excursion + 1, max_value=4000),
+        label="screen_width",
+    )
+    screen_height = data.draw(
+        st.integers(min_value=3 * excursion + 1, max_value=4000),
+        label="screen_height",
+    )
+    start_x = data.draw(
+        st.integers(min_value=excursion, max_value=screen_width - excursion),
+        label="start_x",
+    )
+    start_y = data.draw(
+        st.integers(min_value=excursion, max_value=screen_height - excursion),
+        label="start_y",
+    )
+
+    config = EternalGreenConfig(movement_pixels=movement_pixels)
+    simulator = ActivitySimulator(config)
+
+    with patch('eternal_green.simulator.pyautogui') as mock_pyautogui, \
+         patch('eternal_green.simulator.time.sleep') as mock_sleep:
+        mock_pyautogui.FailSafeException = pyautogui.FailSafeException
+        mock_pyautogui.position.return_value = (start_x, start_y)
+        mock_pyautogui.size.return_value = (screen_width, screen_height)
+
+        simulator._move_return_to_source(movement_pixels)
+
+        # time.sleep should have been called once with value in [0.3, 0.5]
+        mock_sleep.assert_called_once()
+        sleep_duration = mock_sleep.call_args[0][0]
+        assert 0.3 <= sleep_duration <= 0.5
+
+        # moveTo should have been called exactly twice: outward move + return
+        assert mock_pyautogui.moveTo.call_count == 2
+
+        # The final moveTo call should return cursor to the original position
+        final_call_args, final_call_kwargs = mock_pyautogui.moveTo.call_args_list[-1]
+        assert final_call_args == (start_x, start_y), (
+            f"Final moveTo should return to ({start_x}, {start_y}), "
+            f"got {final_call_args}"
+        )
+        assert final_call_kwargs.get('duration', 0) == 0.3
+
+
+# Feature: movement-patterns, Property 5: Bounce Direction Persists When No Boundary Collision
+# **Validates: Requirements 4.1, 4.3**
+@settings(max_examples=100, deadline=None)
+@given(
+    movement_pixels=st.integers(min_value=1, max_value=50),
+    dx_sign=st.sampled_from([-1, 1]),
+    dy_sign=st.sampled_from([-1, 1]),
+    data=st.data(),
+)
+def test_bounce_direction_persists_no_collision(movement_pixels, dx_sign, dy_sign, data):
+    """For any cursor position and direction vector where the computed target is within
+    the usable area (no boundary exceeded), after executing _move_bounce, the direction
+    vector SHALL remain unchanged."""
+    # Screen must be large enough to guarantee the target is within bounds
+    # Minimum screen size: position must be at least movement_pixels from edges,
+    # and after adding movement_pixels in any direction, still within bounds.
+    # So we need screen_width >= 3*movement_pixels + 1 and position in
+    # [movement_pixels, screen_width - movement_pixels].
+    # After moving by ±movement_pixels, target must stay in
+    # [movement_pixels, screen_width - movement_pixels].
+    # So position must be in [2*movement_pixels, screen_width - 2*movement_pixels].
+    screen_width = data.draw(
+        st.integers(min_value=4 * movement_pixels + 1, max_value=4000),
+        label="screen_width",
+    )
+    screen_height = data.draw(
+        st.integers(min_value=4 * movement_pixels + 1, max_value=4000),
+        label="screen_height",
+    )
+    # Ensure position is far enough from edges that movement won't cause collision
+    start_x = data.draw(
+        st.integers(min_value=2 * movement_pixels, max_value=screen_width - 2 * movement_pixels),
+        label="start_x",
+    )
+    start_y = data.draw(
+        st.integers(min_value=2 * movement_pixels, max_value=screen_height - 2 * movement_pixels),
+        label="start_y",
+    )
+
+    config = EternalGreenConfig(movement_pixels=movement_pixels, movement_pattern="bounce")
+    simulator = ActivitySimulator(config)
+    simulator._bounce_direction = (dx_sign, dy_sign)
+
+    with patch('eternal_green.simulator.pyautogui') as mock_pyautogui:
+        mock_pyautogui.FailSafeException = pyautogui.FailSafeException
+        mock_pyautogui.position.return_value = (start_x, start_y)
+        mock_pyautogui.size.return_value = (screen_width, screen_height)
+
+        # Compute expected target so we can make _verify_moved pass
+        expected_x = start_x + dx_sign * movement_pixels
+        expected_y = start_y + dy_sign * movement_pixels
+
+        # After moveTo, position returns the new location (so _verify_moved succeeds)
+        mock_pyautogui.position.side_effect = [
+            (start_x, start_y),       # initial position read
+            (expected_x, expected_y),  # verification read after moveTo
+        ]
+
+        simulator._move_bounce(movement_pixels)
+
+        # Direction should remain unchanged since no boundary collision occurred
+        assert simulator._bounce_direction == (dx_sign, dy_sign), (
+            f"Direction changed from ({dx_sign}, {dy_sign}) to "
+            f"{simulator._bounce_direction} but no boundary collision occurred"
+        )
+
+
+# Feature: movement-patterns, Property 6: Bounce Reverses Offending Axis on Boundary Collision
+# **Validates: Requirements 4.4, 4.5**
+@settings(max_examples=100, deadline=None)
+@given(
+    movement_pixels=st.integers(min_value=1, max_value=50),
+    data=st.data(),
+)
+def test_bounce_reverses_offending_axis_on_collision(movement_pixels, data):
+    """For any cursor position and direction vector where the computed target would exceed
+    the usable area on a given axis, after executing _move_bounce, the direction component
+    for that axis SHALL be negated while the other axis component remains unchanged."""
+    # Screen must be large enough to support both collision and safe zones.
+    # For safe zones we need at least 4*movement_pixels + 1 on that axis.
+    # For collision zones we need at least 3*movement_pixels + 1.
+    # Use max to satisfy both.
+    screen_width = data.draw(
+        st.integers(min_value=4 * movement_pixels + 1, max_value=4000),
+        label="screen_width",
+    )
+    screen_height = data.draw(
+        st.integers(min_value=4 * movement_pixels + 1, max_value=4000),
+        label="screen_height",
+    )
+
+    # Choose which axis (or both) will collide
+    collide_x = data.draw(st.booleans(), label="collide_x")
+    collide_y = data.draw(st.booleans(), label="collide_y")
+    # At least one axis must collide for this test
+    assume(collide_x or collide_y)
+
+    # Set up direction and position to cause collision on the chosen axes
+    if collide_x:
+        # Heading right (+1) near right edge, or left (-1) near left edge
+        x_direction = data.draw(st.sampled_from([-1, 1]), label="x_direction")
+        if x_direction == 1:
+            # Near right edge: position + pixels > screen_width - pixels
+            # So position > screen_width - 2*pixels
+            start_x = data.draw(
+                st.integers(
+                    min_value=max(screen_width - 2 * movement_pixels + 1, movement_pixels),
+                    max_value=screen_width - movement_pixels,
+                ),
+                label="start_x",
+            )
+        else:
+            # Near left edge: position - pixels < pixels
+            # So position < 2*pixels
+            start_x = data.draw(
+                st.integers(
+                    min_value=movement_pixels,
+                    max_value=min(2 * movement_pixels - 1, screen_width - movement_pixels),
+                ),
+                label="start_x",
+            )
+    else:
+        # No x collision — position in safe zone (guaranteed valid since screen >= 4*pixels+1)
+        x_direction = data.draw(st.sampled_from([-1, 1]), label="x_direction")
+        start_x = data.draw(
+            st.integers(
+                min_value=2 * movement_pixels,
+                max_value=screen_width - 2 * movement_pixels,
+            ),
+            label="start_x",
+        )
+
+    if collide_y:
+        y_direction = data.draw(st.sampled_from([-1, 1]), label="y_direction")
+        if y_direction == 1:
+            # Near bottom edge
+            start_y = data.draw(
+                st.integers(
+                    min_value=max(screen_height - 2 * movement_pixels + 1, movement_pixels),
+                    max_value=screen_height - movement_pixels,
+                ),
+                label="start_y",
+            )
+        else:
+            # Near top edge
+            start_y = data.draw(
+                st.integers(
+                    min_value=movement_pixels,
+                    max_value=min(2 * movement_pixels - 1, screen_height - movement_pixels),
+                ),
+                label="start_y",
+            )
+    else:
+        # No y collision — position in safe zone (guaranteed valid since screen >= 4*pixels+1)
+        y_direction = data.draw(st.sampled_from([-1, 1]), label="y_direction")
+        start_y = data.draw(
+            st.integers(
+                min_value=2 * movement_pixels,
+                max_value=screen_height - 2 * movement_pixels,
+            ),
+            label="start_y",
+        )
+
+    config = EternalGreenConfig(movement_pixels=movement_pixels, movement_pattern="bounce")
+    simulator = ActivitySimulator(config)
+    simulator._bounce_direction = (x_direction, y_direction)
+
+    with patch('eternal_green.simulator.pyautogui') as mock_pyautogui:
+        mock_pyautogui.FailSafeException = pyautogui.FailSafeException
+        mock_pyautogui.size.return_value = (screen_width, screen_height)
+        # Return start position first, then a different position for _verify_moved
+        mock_pyautogui.position.side_effect = [
+            (start_x, start_y),
+            (start_x + 1, start_y + 1),  # just needs to differ from original
+        ]
+
+        simulator._move_bounce(movement_pixels)
+
+        new_dx_sign, new_dy_sign = simulator._bounce_direction
+
+        # If x collided, x direction must be reversed
+        if collide_x:
+            assert new_dx_sign == -x_direction, (
+                f"X axis collided but direction not reversed: "
+                f"was {x_direction}, now {new_dx_sign}"
+            )
+        else:
+            assert new_dx_sign == x_direction, (
+                f"X axis did NOT collide but direction changed: "
+                f"was {x_direction}, now {new_dx_sign}"
+            )
+
+        # If y collided, y direction must be reversed
+        if collide_y:
+            assert new_dy_sign == -y_direction, (
+                f"Y axis collided but direction not reversed: "
+                f"was {y_direction}, now {new_dy_sign}"
+            )
+        else:
+            assert new_dy_sign == y_direction, (
+                f"Y axis did NOT collide but direction changed: "
+                f"was {y_direction}, now {new_dy_sign}"
+            )

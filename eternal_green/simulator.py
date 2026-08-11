@@ -7,6 +7,7 @@ import platform
 import random
 import signal
 import threading
+import time
 from typing import Optional
 
 import pyautogui
@@ -50,6 +51,12 @@ class ActivitySimulator:
         self._stop_event = threading.Event()
         self._original_sigint_handler = None
         self._consecutive_failures = 0
+        self._bounce_direction: tuple[int, int] | None = None
+        self._pattern_dispatch: dict[str, callable] = {
+            "random_direction": self._move_random_direction,
+            "return_to_source": self._move_return_to_source,
+            "bounce": self._move_bounce,
+        }
     
     @staticmethod
     def _compute_bounce_target(
@@ -99,10 +106,155 @@ class ActivitySimulator:
 
         return (target_x, target_y)
 
-    def move_mouse(self, pixels: int) -> None:
+    def _verify_moved(self, original_x: int, original_y: int) -> None:
+        """Verify the mouse actually moved from its original position.
+
+        Args:
+            original_x: The x-coordinate before the move attempt.
+            original_y: The y-coordinate before the move attempt.
+
+        Raises:
+            RuntimeError: If the cursor is still at (original_x, original_y),
+                indicating Accessibility permissions may not be granted.
+        """
+        new_x, new_y = pyautogui.position()
+        if new_x == original_x and new_y == original_y:
+            raise RuntimeError(
+                "Mouse did not move — Accessibility permissions may not be "
+                "granted. Go to System Settings → Privacy & Security → "
+                "Accessibility and add Eternal Green."
+            )
+
+    def _move_random_direction(self, pixels: int) -> None:
         """Move mouse in a random diagonal direction with bounce logic.
 
-        The cursor stays at its new position (no return to original).
+        Equivalent to the current ``move_mouse`` behavior: selects a random
+        diagonal, applies bounce-target computation, moves the cursor, and
+        verifies it actually moved.
+
+        Args:
+            pixels: Number of pixels to move in each axis.
+        """
+        original_x, original_y = pyautogui.position()
+        dx = random.choice([-pixels, pixels])
+        dy = random.choice([-pixels, pixels])
+        screen_width, screen_height = pyautogui.size()
+
+        target_x, target_y = self._compute_bounce_target(
+            original_x, original_y, dx, dy, pixels, screen_width, screen_height
+        )
+        pyautogui.moveTo(target_x, target_y, duration=0)
+        self._verify_moved(original_x, original_y)
+
+    def _move_return_to_source(self, pixels: int) -> None:
+        """Move cursor away visibly then smoothly glide back to origin.
+
+        Uses a larger excursion (20x movement_pixels, capped at 100px) so the
+        movement is clearly visible. Animates outward over 0.3s, pauses 0.3-0.5s,
+        then glides back over 0.3s.
+
+        Args:
+            pixels: Base movement magnitude in pixels.
+        """
+        # Use a larger excursion so the motion is actually visible
+        excursion = min(pixels * 20, 100)
+
+        original_x, original_y = pyautogui.position()
+        dx = random.choice([-excursion, excursion])
+        dy = random.choice([-excursion, excursion])
+        screen_width, screen_height = pyautogui.size()
+
+        target_x, target_y = self._compute_bounce_target(
+            original_x, original_y, dx, dy, excursion, screen_width, screen_height
+        )
+
+        # Animate outward (visible glide)
+        pyautogui.moveTo(target_x, target_y, duration=0.3)
+
+        # Pause so the excursion is perceptible
+        time.sleep(random.uniform(0.3, 0.5))
+
+        # Smoothly glide back to original position
+        pyautogui.moveTo(original_x, original_y, duration=0.3)
+
+    def _move_bounce(self, pixels: int, duration: float = 0) -> None:
+        """Continuously glide the cursor like a DVD screensaver, bouncing off edges.
+
+        When ``duration > 0``, runs a tight animation loop moving 1px per step
+        at ~50fps for the given number of seconds. The cursor moves diagonally
+        and reverses the offending axis component when it hits a screen edge.
+
+        When ``duration == 0`` (single-step mode, used by tests), performs one
+        discrete move of ``pixels`` in the current direction.
+
+        Args:
+            pixels: Movement magnitude per step (used as margin for edge detection).
+            duration: How long to animate in seconds. 0 = single step.
+        """
+        if self._bounce_direction is None:
+            self._bounce_direction = (
+                random.choice([-1, 1]),
+                random.choice([-1, 1]),
+            )
+
+        screen_width, screen_height = pyautogui.size()
+        margin = pixels
+
+        if duration <= 0:
+            # Single-step mode (backward compat for tests)
+            original_x, original_y = pyautogui.position()
+            dx_sign, dy_sign = self._bounce_direction
+
+            target_x = original_x + dx_sign * pixels
+            target_y = original_y + dy_sign * pixels
+
+            if target_x < margin or target_x > screen_width - margin:
+                dx_sign = -dx_sign
+                target_x = original_x + dx_sign * pixels
+            if target_y < margin or target_y > screen_height - margin:
+                dy_sign = -dy_sign
+                target_y = original_y + dy_sign * pixels
+
+            target_x = max(margin, min(target_x, screen_width - margin))
+            target_y = max(margin, min(target_y, screen_height - margin))
+
+            self._bounce_direction = (dx_sign, dy_sign)
+            pyautogui.moveTo(target_x, target_y, duration=0)
+            self._verify_moved(original_x, original_y)
+            return
+
+        # Continuous animation mode — smooth DVD-screensaver motion
+        step_delay = 0.02  # ~50fps
+        end_time = time.monotonic() + duration
+
+        while time.monotonic() < end_time and not self._stop_event.is_set():
+            x, y = pyautogui.position()
+            dx_sign, dy_sign = self._bounce_direction
+
+            new_x = x + dx_sign
+            new_y = y + dy_sign
+
+            # Bounce off edges
+            if new_x < margin or new_x > screen_width - margin:
+                dx_sign = -dx_sign
+                new_x = x + dx_sign
+            if new_y < margin or new_y > screen_height - margin:
+                dy_sign = -dy_sign
+                new_y = y + dy_sign
+
+            # Clamp (safety)
+            new_x = max(margin, min(new_x, screen_width - margin))
+            new_y = max(margin, min(new_y, screen_height - margin))
+
+            self._bounce_direction = (dx_sign, dy_sign)
+            pyautogui.moveTo(new_x, new_y, duration=0)
+            time.sleep(step_delay)
+
+    def move_mouse(self, pixels: int) -> None:
+        """Move mouse according to the configured movement pattern.
+
+        Dispatches to the pattern-specific handler based on
+        ``self.config.movement_pattern``.
 
         Args:
             pixels: Number of pixels to move in each axis.
@@ -112,32 +264,8 @@ class ActivitySimulator:
                 Accessibility permissions on macOS).
             pyautogui.FailSafeException: Propagated if triggered.
         """
-        # Read current position
-        original_x, original_y = pyautogui.position()
-
-        # Select random diagonal direction
-        dx = random.choice([-pixels, pixels])
-        dy = random.choice([-pixels, pixels])
-
-        # Get screen dimensions
-        screen_width, screen_height = pyautogui.size()
-
-        # Compute target with bounce
-        target_x, target_y = self._compute_bounce_target(
-            original_x, original_y, dx, dy, pixels, screen_width, screen_height
-        )
-
-        # Move cursor to target (cursor stays there)
-        pyautogui.moveTo(target_x, target_y, duration=0)
-
-        # Verify the mouse actually moved
-        new_x, new_y = pyautogui.position()
-        if new_x == original_x and new_y == original_y:
-            raise RuntimeError(
-                "Mouse did not move — Accessibility permissions may not be "
-                "granted. Go to System Settings → Privacy & Security → "
-                "Accessibility and add Eternal Green."
-            )
+        handler = self._pattern_dispatch[self.config.movement_pattern]
+        handler(pixels)
     
     def press_key(self) -> None:
         """Press a neutral key (shift) that doesn't affect applications."""
@@ -233,19 +361,73 @@ class ActivitySimulator:
         if self.logger:
             self.logger.log_activity(start_msg)
         
+        # Initialize bounce direction for "bounce" pattern
+        if self.config.movement_pattern == "bounce":
+            self._bounce_direction = (
+                random.choice([-1, 1]),
+                random.choice([-1, 1]),
+            )
+        
         try:
-            while self._running:
-                # Get next interval (random or fixed)
-                next_interval = self._get_next_interval()
-                
-                # Simulate activity with interval info
-                self.simulate_activity(next_interval=next_interval)
-                
-                # Wait for interval or stop event
-                if self._stop_event.wait(timeout=next_interval):
-                    break
+            if self.config.movement_pattern == "bounce":
+                self._run_bounce_loop()
+            else:
+                self._run_standard_loop()
         finally:
             self._cleanup()
+
+    def _run_standard_loop(self) -> None:
+        """Standard move-then-wait loop for random_direction and return_to_source."""
+        while self._running:
+            next_interval = self._get_next_interval()
+            self.simulate_activity(next_interval=next_interval)
+            if self._stop_event.wait(timeout=next_interval):
+                break
+
+    def _run_bounce_loop(self) -> None:
+        """Continuous bounce loop — the cursor glides for the full interval duration.
+
+        Each cycle: glide continuously for next_interval seconds, then
+        optionally press a key and log. The mouse never stops moving
+        (DVD screensaver style).
+        """
+        while self._running:
+            next_interval = self._get_next_interval()
+
+            try:
+                # Continuous glide for the entire interval
+                self._move_bounce(self.config.movement_pixels, duration=next_interval)
+
+                # Press key if not silent (registers activity)
+                if not self.config.silent_mode:
+                    self.press_key()
+
+                mode_str = "silent mode" if self.config.silent_mode else "with keystroke"
+                message = (
+                    f"Activity simulation completed - bounce cycle "
+                    f"{next_interval}s ({mode_str}), next cycle starting"
+                )
+                print(f"✓ {message}")
+                if self.logger:
+                    self.logger.log_activity(message)
+
+                self._consecutive_failures = 0
+
+            except pyautogui.FailSafeException:
+                raise
+            except Exception as e:
+                self._consecutive_failures += 1
+                error_msg = f"Error during bounce simulation: {e}"
+                print(f"✗ {error_msg}")
+                if self.logger:
+                    self.logger.log_error(error_msg)
+                _log.exception("Bounce simulation failed")
+                # Wait a bit before retrying to avoid tight error loop
+                if self._stop_event.wait(timeout=1):
+                    break
+
+            if self._stop_event.is_set():
+                break
     
     def stop(self) -> None:
         """Stop the loop gracefully."""
