@@ -7,7 +7,7 @@ Anti-idle application that prevents computer inactivity by simulating minimal us
 
 ## Features
 
-- 🖱️ **Configurable mouse movements** - Set custom movement distances
+- 🖱️ **Natural mouse movements** - Random diagonal movement with screen-edge bounce logic
 - ⏱️ **Adjustable intervals** - Control how often activity is simulated
 - 🎲 **Random intervals** - Randomize timing between activities for more natural behavior
 - 🔇 **Silent mode** - Mouse-only movements without keystrokes
@@ -298,6 +298,12 @@ The `.app` bundle is built with [PyInstaller](https://pyinstaller.org/) using th
 ### Accessibility Permissions
 
 `pyautogui` requires Accessibility access to control the mouse and keyboard. On first launch macOS will prompt you to allow it. If the prompt doesn't appear, go to **System Settings → Privacy & Security → Accessibility** and add Eternal Green manually.
+
+The simulator includes **movement verification** — after each `moveTo` call it checks whether the cursor actually moved. If the position is unchanged (a strong signal that Accessibility permissions are missing), a `RuntimeError` is raised immediately rather than silently failing.
+
+### Fail-Safe Behavior
+
+`pyautogui`'s fail-safe is respected at all times: if you move the mouse to a screen corner during simulation, `pyautogui.FailSafeException` is raised and immediately propagated — it is never suppressed by the error-handling logic. This ensures you can always regain control of your machine.
 
 ## Examples
 

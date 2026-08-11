@@ -51,22 +51,85 @@ class ActivitySimulator:
         self._original_sigint_handler = None
         self._consecutive_failures = 0
     
-    def move_mouse(self, pixels: int) -> None:
-        """Move mouse by specified pixels and return to original position.
-        
+    @staticmethod
+    def _compute_bounce_target(
+        x: int,
+        y: int,
+        dx: int,
+        dy: int,
+        margin: int,
+        screen_width: int,
+        screen_height: int,
+    ) -> tuple[int, int]:
+        """Compute target position with bounce logic.
+
+        The usable area is defined as:
+            x in [margin, screen_width - margin]
+            y in [margin, screen_height - margin]
+
+        If the naive target (x+dx, y+dy) would fall outside the usable area,
+        the offending component is reversed (bounced).
+
         Args:
-            pixels: Number of pixels to move
-        
+            x: Current cursor x position.
+            y: Current cursor y position.
+            dx: Horizontal movement (positive = right, negative = left).
+            dy: Vertical movement (positive = down, negative = up).
+            margin: Safe margin in pixels (equal to movement_pixels).
+            screen_width: Total screen width from pyautogui.size().
+            screen_height: Total screen height from pyautogui.size().
+
+        Returns:
+            Tuple of (target_x, target_y) guaranteed to be within usable area.
+        """
+        target_x = x + dx
+        target_y = y + dy
+
+        # Bounce horizontal component
+        if target_x < margin or target_x > screen_width - margin:
+            target_x = x - dx  # reverse direction
+
+        # Bounce vertical component
+        if target_y < margin or target_y > screen_height - margin:
+            target_y = y - dy  # reverse direction
+
+        # Clamp to usable area (handles edge cases where bounce still overshoots)
+        target_x = max(margin, min(target_x, screen_width - margin))
+        target_y = max(margin, min(target_y, screen_height - margin))
+
+        return (target_x, target_y)
+
+    def move_mouse(self, pixels: int) -> None:
+        """Move mouse in a random diagonal direction with bounce logic.
+
+        The cursor stays at its new position (no return to original).
+
+        Args:
+            pixels: Number of pixels to move in each axis.
+
         Raises:
             RuntimeError: If the mouse did not actually move (e.g. missing
                 Accessibility permissions on macOS).
+            pyautogui.FailSafeException: Propagated if triggered.
         """
-        # Get current position
+        # Read current position
         original_x, original_y = pyautogui.position()
-        
-        # Move mouse by specified pixels
-        pyautogui.moveRel(pixels, pixels, duration=0)
-        
+
+        # Select random diagonal direction
+        dx = random.choice([-pixels, pixels])
+        dy = random.choice([-pixels, pixels])
+
+        # Get screen dimensions
+        screen_width, screen_height = pyautogui.size()
+
+        # Compute target with bounce
+        target_x, target_y = self._compute_bounce_target(
+            original_x, original_y, dx, dy, pixels, screen_width, screen_height
+        )
+
+        # Move cursor to target (cursor stays there)
+        pyautogui.moveTo(target_x, target_y, duration=0)
+
         # Verify the mouse actually moved
         new_x, new_y = pyautogui.position()
         if new_x == original_x and new_y == original_y:
@@ -75,9 +138,6 @@ class ActivitySimulator:
                 "granted. Go to System Settings → Privacy & Security → "
                 "Accessibility and add Eternal Green."
             )
-        
-        # Return to original position
-        pyautogui.moveTo(original_x, original_y, duration=0)
     
     def press_key(self) -> None:
         """Press a neutral key (shift) that doesn't affect applications."""
@@ -118,6 +178,8 @@ class ActivitySimulator:
             self._consecutive_failures = 0
             return True
             
+        except pyautogui.FailSafeException:
+            raise  # propagate fail-safe, never suppress
         except Exception as e:
             self._consecutive_failures += 1
             error_msg = f"Error during activity simulation: {e}"
