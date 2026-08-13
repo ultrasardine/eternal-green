@@ -37,6 +37,7 @@ class TestSettingsWindowInit:
 
         assert hasattr(settings_window, "VALID_MOVEMENT_PATTERNS")
         assert settings_window.VALID_MOVEMENT_PATTERNS == (
+            "standard",
             "random_direction",
             "return_to_source",
             "bounce",
@@ -210,6 +211,7 @@ class TestSettingsWindowComboboxSetup:
             # We can test this by checking the SettingsWindow's expectations:
             # The combobox should use VALID_MOVEMENT_PATTERNS as values.
             assert list(VALID_MOVEMENT_PATTERNS) == [
+                "standard",
                 "random_direction",
                 "return_to_source",
                 "bounce",
@@ -219,7 +221,8 @@ class TestSettingsWindowComboboxSetup:
         """The values passed to the combobox match VALID_MOVEMENT_PATTERNS exactly."""
         # The design specifies: values=list(VALID_MOVEMENT_PATTERNS), state="readonly"
         # We verify the constant used in the implementation is correct
-        assert len(VALID_MOVEMENT_PATTERNS) == 3
+        assert len(VALID_MOVEMENT_PATTERNS) == 4
+        assert "standard" in VALID_MOVEMENT_PATTERNS
         assert "random_direction" in VALID_MOVEMENT_PATTERNS
         assert "return_to_source" in VALID_MOVEMENT_PATTERNS
         assert "bounce" in VALID_MOVEMENT_PATTERNS

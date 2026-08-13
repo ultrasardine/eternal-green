@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional
 import json
 
-VALID_MOVEMENT_PATTERNS: tuple[str, ...] = ("random_direction", "return_to_source", "bounce")
+VALID_MOVEMENT_PATTERNS: tuple[str, ...] = ("standard", "random_direction", "return_to_source", "bounce")
 
 
 @dataclass
@@ -19,7 +19,7 @@ class EternalGreenConfig:
     random_interval: bool = False
     interval_range_min: int = 10
     interval_range_max: int = 60
-    movement_pattern: str = "random_direction"
+    movement_pattern: str = "standard"
     
     def validate(self) -> list[str]:
         """Validate configuration values. Returns list of error messages."""

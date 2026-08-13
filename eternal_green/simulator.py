@@ -53,6 +53,7 @@ class ActivitySimulator:
         self._consecutive_failures = 0
         self._bounce_direction: tuple[int, int] | None = None
         self._pattern_dispatch: dict[str, callable] = {
+            "standard": self._move_standard,
             "random_direction": self._move_random_direction,
             "return_to_source": self._move_return_to_source,
             "bounce": self._move_bounce,
@@ -124,6 +125,22 @@ class ActivitySimulator:
                 "granted. Go to System Settings → Privacy & Security → "
                 "Accessibility and add Eternal Green."
             )
+
+    def _move_standard(self, pixels: int) -> None:
+        """Move mouse by the configured pixels using moveRel.
+
+        This is the original pre-pattern behavior: a simple relative move
+        in a random diagonal direction by exactly ``pixels`` on each axis.
+        No bounce logic, no return-to-source — just a quick nudge.
+
+        Args:
+            pixels: Number of pixels to move in each axis.
+        """
+        dx = random.choice([-pixels, pixels])
+        dy = random.choice([-pixels, pixels])
+        original_x, original_y = pyautogui.position()
+        pyautogui.moveRel(dx, dy, duration=0)
+        self._verify_moved(original_x, original_y)
 
     def _move_random_direction(self, pixels: int) -> None:
         """Move mouse in a random diagonal direction with bounce logic.
@@ -288,13 +305,24 @@ class ActivitySimulator:
             if not self.config.silent_mode:
                 self.press_key()
             
-            mode_str = "silent mode" if self.config.silent_mode else "with keystroke"
-            
-            # Build message with interval info
-            if next_interval is not None:
-                message = f"Activity simulation completed - mouse moved {self.config.movement_pixels}px ({mode_str}), next in {next_interval}s"
+            mode_str = "silent" if self.config.silent_mode else "with keystroke"
+            pattern = self.config.movement_pattern
+
+            # Build pattern-specific message
+            if pattern == "standard":
+                detail = f"moved {self.config.movement_pixels}px"
+            elif pattern == "random_direction":
+                detail = f"moved {self.config.movement_pixels}px (bounce-clamped)"
+            elif pattern == "return_to_source":
+                excursion = min(self.config.movement_pixels * 20, 100)
+                detail = f"excursion {excursion}px and returned"
             else:
-                message = f"Activity simulation completed - mouse moved {self.config.movement_pixels}px ({mode_str})"
+                detail = f"moved {self.config.movement_pixels}px"
+
+            if next_interval is not None:
+                message = f"[{pattern}] {detail} ({mode_str}), next in {next_interval}s"
+            else:
+                message = f"[{pattern}] {detail} ({mode_str})"
             
             # Print to console
             print(f"✓ {message}")
@@ -353,9 +381,9 @@ class ActivitySimulator:
                 self.logger.log_warning(warn_msg)
         
         if self.config.random_interval:
-            start_msg = f"Starting idle prevention loop (random interval: {self.config.interval_range_min}-{self.config.interval_range_max}s)"
+            start_msg = f"Starting idle prevention ({self.config.movement_pattern}, random interval: {self.config.interval_range_min}-{self.config.interval_range_max}s)"
         else:
-            start_msg = f"Starting idle prevention loop (interval: {self.config.interval_seconds}s)"
+            start_msg = f"Starting idle prevention ({self.config.movement_pattern}, interval: {self.config.interval_seconds}s)"
         
         print(f"▶ {start_msg}")
         if self.logger:
@@ -402,10 +430,10 @@ class ActivitySimulator:
                 if not self.config.silent_mode:
                     self.press_key()
 
-                mode_str = "silent mode" if self.config.silent_mode else "with keystroke"
+                mode_str = "silent" if self.config.silent_mode else "with keystroke"
                 message = (
-                    f"Activity simulation completed - bounce cycle "
-                    f"{next_interval}s ({mode_str}), next cycle starting"
+                    f"[bounce] continuous glide {next_interval}s "
+                    f"({mode_str}), next cycle starting"
                 )
                 print(f"✓ {message}")
                 if self.logger:

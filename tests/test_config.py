@@ -143,7 +143,7 @@ def test_config_backward_compatible_default_movement_pattern(
 
         manager = ConfigManager(config_path=config_path)
         loaded = manager.load()
-        assert loaded.movement_pattern == "random_direction"
+        assert loaded.movement_pattern == "standard"
 
 
 # Feature: movement-patterns, Property 7: Configuration round-trip preserves movement pattern

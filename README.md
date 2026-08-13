@@ -97,7 +97,7 @@ The CLI provides a menu with options to:
 5. Edit log file path
 6. Toggle random interval (randomize timing for pattern prevention)
 7. Edit random interval range (set min/max seconds)
-8. Edit movement pattern (choose from: `random_direction`, `return_to_source`, `bounce`)
+8. Edit movement pattern (choose from: `standard`, `random_direction`, `return_to_source`, `bounce`)
 9. Start idle prevention
 10. Exit
 
@@ -105,7 +105,10 @@ The CLI provides a menu with options to:
 
 The application provides real-time feedback during operation:
 - `▶ Starting idle prevention loop (interval: Xs)` - When simulation starts
-- `✓ Activity simulation completed - mouse moved Xpx (silent mode/with keystroke)` - Each successful activity
+- `✓ [pattern] detail (mode), next in Xs` - Each successful activity, e.g.:
+  - `✓ [standard] moved 2px (silent), next in 60s`
+  - `✓ [random_direction] moved 2px (bounce-clamped) (with keystroke), next in 45s`
+  - `✓ [return_to_source] excursion 40px and returned (silent), next in 90s`
 - `✗ Error during activity simulation: ...` - If errors occur
 - `■ Graceful shutdown initiated` - When stopping
 
@@ -250,7 +253,7 @@ Configuration is stored in `~/.eternal_green_config.json` with the following opt
 | `random_interval` | bool | false | If true, randomizes interval between min and max range |
 | `interval_range_min` | int | 10 | Minimum seconds for random interval (min: 10, max: 3600) |
 | `interval_range_max` | int | 60 | Maximum seconds for random interval (min: 10, max: 3600) |
-| `movement_pattern` | str | `random_direction` | Movement pattern for mouse simulation. Valid values: `random_direction`, `return_to_source` (visible animated excursion then glide back), `bounce` |
+| `movement_pattern` | str | `standard` | Movement pattern for mouse simulation. Valid values: `standard`, `random_direction`, `return_to_source` (visible animated excursion then glide back), `bounce` |
 
 ### Example Configuration File
 
@@ -263,7 +266,7 @@ Configuration is stored in `~/.eternal_green_config.json` with the following opt
   "random_interval": false,
   "interval_range_min": 10,
   "interval_range_max": 60,
-  "movement_pattern": "random_direction"
+  "movement_pattern": "standard"
 }
 ```
 
@@ -397,7 +400,7 @@ if success:
 
 # Simulate with timing info for next activity
 success = simulator.simulate_activity(next_interval=120)
-# Output: "✓ Activity simulation completed - mouse moved 15px (silent mode), next in 120s"
+# Output: "✓ [random_direction] moved 15px (bounce-clamped) (silent), next in 120s"
 ```
 
 ## Requirements

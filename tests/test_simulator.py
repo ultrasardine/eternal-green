@@ -20,7 +20,7 @@ from eternal_green.simulator import ActivitySimulator
 )
 def test_bounce_movement_cursor_persists(start_x, start_y, movement_pixels):
     """After move_mouse, cursor stays at computed bounce target (no return to original)."""
-    config = EternalGreenConfig(movement_pixels=movement_pixels)
+    config = EternalGreenConfig(movement_pixels=movement_pixels, movement_pattern="random_direction")
     simulator = ActivitySimulator(config)
     
     with patch('eternal_green.simulator.pyautogui') as mock_pyautogui:
@@ -269,7 +269,7 @@ def test_cursor_persists_at_target(movement_pixels, data):
     # Skip degenerate case where bounce produces same position (no actual movement)
     assume(not (expected_x == start_x and expected_y == start_y))
 
-    config = EternalGreenConfig(movement_pixels=movement_pixels)
+    config = EternalGreenConfig(movement_pixels=movement_pixels, movement_pattern="random_direction")
     simulator = ActivitySimulator(config)
 
     with patch('eternal_green.simulator.pyautogui') as mock_pyautogui, \
@@ -390,7 +390,7 @@ def test_fixed_interval_when_random_disabled():
 def test_movement_verification_detects_no_move(start_x, start_y, movement_pixels):
     """When cursor position does not change after moveTo, move_mouse SHALL raise
     RuntimeError indicating Accessibility permissions may not be granted."""
-    config = EternalGreenConfig(movement_pixels=movement_pixels)
+    config = EternalGreenConfig(movement_pixels=movement_pixels, movement_pattern="random_direction")
     simulator = ActivitySimulator(config)
 
     with patch('eternal_green.simulator.pyautogui') as mock_pyautogui:
