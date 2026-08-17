@@ -127,19 +127,23 @@ class ActivitySimulator:
             )
 
     def _move_standard(self, pixels: int) -> None:
-        """Move mouse by the configured pixels using moveRel.
+        """Move mouse by the configured pixels in a random diagonal direction.
 
-        This is the original pre-pattern behavior: a simple relative move
-        in a random diagonal direction by exactly ``pixels`` on each axis.
-        No bounce logic, no return-to-source — just a quick nudge.
+        Uses bounce-target computation to avoid pushing the cursor into a
+        screen corner (which triggers pyautogui's fail-safe).
 
         Args:
             pixels: Number of pixels to move in each axis.
         """
+        original_x, original_y = pyautogui.position()
         dx = random.choice([-pixels, pixels])
         dy = random.choice([-pixels, pixels])
-        original_x, original_y = pyautogui.position()
-        pyautogui.moveRel(dx, dy, duration=0)
+        screen_width, screen_height = pyautogui.size()
+
+        target_x, target_y = self._compute_bounce_target(
+            original_x, original_y, dx, dy, pixels, screen_width, screen_height
+        )
+        pyautogui.moveTo(target_x, target_y, duration=0)
         self._verify_moved(original_x, original_y)
 
     def _move_random_direction(self, pixels: int) -> None:
