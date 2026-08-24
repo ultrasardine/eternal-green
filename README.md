@@ -101,6 +101,8 @@ The CLI provides a menu with options to:
 9. Start idle prevention
 10. Exit
 
+Configuration is always reloaded from disk when you start idle prevention, so any changes made through the menu (or edited externally) are picked up immediately without restarting the app.
+
 ### Console Output
 
 The application provides real-time feedback during operation:
