@@ -235,14 +235,17 @@ class CLIInterface:
         return True
     
     def _start_simulator(self) -> None:
-        """Start the activity simulator."""
-        if self.simulator is None:
-            # Create simulator with current config
-            self._config = self.config_manager.load()
-            if self.logger is None:
-                self.logger = ActivityLogger(self._config.log_file_path)
-            self.simulator = ActivitySimulator(self._config, self.logger)
-        
+        """Start the activity simulator with the latest persisted configuration."""
+        # Always reload config from disk to pick up any menu edits
+        self._config = self.config_manager.load()
+
+        # Refresh logger if log_file_path changed or logger doesn't exist
+        if self.logger is None or self.logger.log_file_path != self._config.log_file_path:
+            self.logger = ActivityLogger(self._config.log_file_path)
+
+        # Always create a fresh simulator with the latest config
+        self.simulator = ActivitySimulator(self._config, self.logger)
+
         print("\nStarting idle prevention... Press Ctrl+C to stop.")
         try:
             self.simulator.start_loop()
