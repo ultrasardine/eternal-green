@@ -307,7 +307,11 @@ The `.app` bundle is built with [PyInstaller](https://pyinstaller.org/) using th
 
 `pyautogui` requires Accessibility access to control the mouse and keyboard. On first launch macOS will prompt you to allow it. If the prompt doesn't appear, go to **System Settings → Privacy & Security → Accessibility** and add Eternal Green manually.
 
-The simulator includes **movement verification** — after each `moveTo` call it checks whether the cursor actually moved. If the position is unchanged (a strong signal that Accessibility permissions are missing), a `RuntimeError` is raised immediately rather than silently failing.
+The simulator includes **movement verification** — after each mouse move it checks whether the cursor actually moved. If the position is unchanged (a strong signal that Accessibility permissions are missing), a `RuntimeError` is raised immediately rather than silently failing.
+
+### Retina / HiDPI Displays
+
+The `standard` movement pattern issues a **relative** move (`pyautogui.move`) rather than an absolute one. On Retina and other scaled displays the coordinate space read by `pyautogui.position()`/`size()` (logical points) differs from the space consumed by an absolute `pyautogui.moveTo` (backing-scaled physical pixels), which could cause a small `movement_pixels` intent to land far across the screen. Expressing the move as a relative delta displaces the cursor by exactly the configured `movement_pixels` per axis regardless of display scaling, while still honoring the bounce/edge clamping that keeps the cursor out of screen corners.
 
 ### Fail-Safe Behavior
 

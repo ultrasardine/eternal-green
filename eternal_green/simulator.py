@@ -143,7 +143,17 @@ class ActivitySimulator:
         target_x, target_y = self._compute_bounce_target(
             original_x, original_y, dx, dy, pixels, screen_width, screen_height
         )
-        pyautogui.moveTo(target_x, target_y, duration=0)
+        # Issue the move as a relative delta rather than an absolute target.
+        # On Retina / HiDPI scaled displays the space read by position()/size()
+        # (logical points) differs from the space consumed by moveTo()
+        # (backing-scaled physical pixels), so an absolute target that is
+        # `pixels` away in the read space can land far away physically. A
+        # relative move expresses the intent "displace by this delta" directly
+        # and sidesteps the coordinate-space mismatch. The delta is derived from
+        # the bounce-clamped target so edge/corner awareness stays intact.
+        effective_dx = target_x - original_x
+        effective_dy = target_y - original_y
+        pyautogui.move(effective_dx, effective_dy, duration=0)
         self._verify_moved(original_x, original_y)
 
     def _move_random_direction(self, pixels: int) -> None:
