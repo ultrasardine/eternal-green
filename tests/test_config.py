@@ -162,3 +162,85 @@ def test_config_round_trip_preserves_movement_pattern(pattern):
         manager.save(config)
         loaded = manager.load()
         assert loaded.movement_pattern == pattern
+
+
+# -----------------------------------------------------------------------------
+# Loading repairs bad files instead of running with invalid values
+# -----------------------------------------------------------------------------
+
+
+def _write(path, data):
+    path.write_text(json.dumps(data) if not isinstance(data, str) else data)
+
+
+def test_load_repairs_invalid_fields_and_keeps_backup(temp_config_path):
+    _write(temp_config_path, {
+        "interval_seconds": 5,            # out of range
+        "movement_pixels": True,          # bool is not an int here
+        "silent_mode": True,              # valid, must be kept
+        "movement_pattern": "zigzag",
+    })
+    manager = ConfigManager(temp_config_path)
+    config = manager.load()
+
+    assert config.interval_seconds == 300
+    assert config.movement_pixels == 2
+    assert config.silent_mode is True
+    assert config.movement_pattern == "standard"
+    assert config.validate() == []
+    assert len(manager.load_warnings) == 3
+    # Repaired file on disk, original kept next to it
+    assert json.loads(temp_config_path.read_text())["interval_seconds"] == 300
+    assert json.loads(temp_config_path.with_name("config.json.bak").read_text())["interval_seconds"] == 5
+
+
+def test_load_resets_inconsistent_interval_range(temp_config_path):
+    _write(temp_config_path, {"interval_range_min": 3000, "interval_range_max": 5000})
+    config = ConfigManager(temp_config_path).load()
+    assert (config.interval_range_min, config.interval_range_max) == (10, 60)
+
+
+def test_load_handles_non_object_and_corrupt_json(temp_config_path):
+    for content in ("[1, 2, 3]", "{not json"):
+        _write(temp_config_path, content)
+        manager = ConfigManager(temp_config_path)
+        assert manager.load() == EternalGreenConfig()
+        assert manager.load_warnings
+
+
+def test_legacy_random_direction_loads_as_standard(temp_config_path):
+    _write(temp_config_path, {"movement_pattern": "random_direction"})
+    manager = ConfigManager(temp_config_path)
+    assert manager.load().movement_pattern == "standard"
+    assert json.loads(temp_config_path.read_text())["movement_pattern"] == "standard"
+
+
+def test_valid_file_is_not_rewritten(temp_config_path):
+    manager = ConfigManager(temp_config_path)
+    manager.save(EternalGreenConfig(interval_seconds=42))
+    manager.load()
+    assert manager.load_warnings == []
+    assert not temp_config_path.with_name("config.json.bak").exists()
+
+
+def test_save_is_atomic_and_leaves_no_temp_files(temp_config_path):
+    manager = ConfigManager(temp_config_path)
+    manager.save(EternalGreenConfig(interval_seconds=42))
+    assert [p.name for p in temp_config_path.parent.iterdir()] == ["config.json"]
+
+
+def test_update_does_not_clobber_changes_from_another_process(temp_config_path):
+    """The tray and the settings window each have a ConfigManager."""
+    tray = ConfigManager(temp_config_path)
+    tray.load()
+    ConfigManager(temp_config_path).update(interval_seconds=120)  # settings window
+
+    tray.update(silent_mode=True)
+    reloaded = ConfigManager(temp_config_path).load()
+    assert reloaded.interval_seconds == 120
+    assert reloaded.silent_mode is True
+
+
+def test_validate_rejects_bool_for_int_fields():
+    errors = EternalGreenConfig(interval_range_min=True).validate()
+    assert any("interval_range_min" in e for e in errors)

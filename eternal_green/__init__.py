@@ -23,8 +23,19 @@ from eternal_green.config import EternalGreenConfig, ConfigManager
 from eternal_green.logger import ActivityLogger, setup_logger
 from eternal_green.simulator import ActivitySimulator
 from eternal_green.cli import CLIInterface, main
-from eternal_green.tray import TrayIcon
-from eternal_green.settings_window import SettingsWindow
+
+
+def __getattr__(name: str):
+    # Imported lazily: the tray pulls in pystray/PIL (and AppKit on macOS),
+    # which the CLI and library users should not have to load.
+    if name == "TrayIcon":
+        from eternal_green.tray import TrayIcon
+        return TrayIcon
+    if name == "SettingsWindow":
+        from eternal_green.settings_window import SettingsWindow
+        return SettingsWindow
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "EternalGreenConfig",

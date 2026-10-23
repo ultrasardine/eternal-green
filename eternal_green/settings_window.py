@@ -254,10 +254,11 @@ class SettingsWindow:
 
     def _on_save(self) -> None:
         """Validate and save configuration."""
+        import tkinter as tk
         from tkinter import messagebox
 
         try:
-            new_config = self.config_manager.update(
+            values = dict(
                 interval_seconds=self._interval_var.get(),
                 movement_pixels=self._pixels_var.get(),
                 silent_mode=self._silent_var.get(),
@@ -267,6 +268,17 @@ class SettingsWindow:
                 log_file_path=self._log_var.get(),
                 movement_pattern=self._pattern_var.get(),
             )
+        except tk.TclError:
+            # IntVar.get() raises on empty or non-numeric spinbox text
+            messagebox.showerror(
+                "Validation Error",
+                "Interval, movement and range fields must be whole numbers.",
+                parent=self._window,
+            )
+            return
+
+        try:
+            new_config = self.config_manager.update(**values)
         except ValueError as exc:
             messagebox.showerror("Validation Error", str(exc), parent=self._window)
             return

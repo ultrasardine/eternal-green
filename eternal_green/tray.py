@@ -7,7 +7,7 @@ silent mode toggle, settings window, and status indicator.
 import subprocess
 import sys
 import threading
-from typing import Optional
+from typing import Callable, Optional
 
 from PIL import Image, ImageDraw
 import pystray
@@ -15,6 +15,19 @@ import pystray
 from eternal_green.config import ConfigManager, EternalGreenConfig
 from eternal_green.logger import ActivityLogger
 from eternal_green.simulator import ActivitySimulator
+
+
+def _on_ui_thread(fn: Callable[[], None]) -> None:
+    """Run ``fn`` on the UI thread (AppKit must only be touched from there)."""
+    if sys.platform == "darwin":
+        try:
+            from PyObjCTools import AppHelper
+        except ImportError:
+            pass
+        else:
+            AppHelper.callAfter(fn)
+            return
+    fn()
 
 
 class TrayIcon:
@@ -37,9 +50,17 @@ class TrayIcon:
         self.config_manager = config_manager
         self.config = config_manager.load()
         self.logger = logger or ActivityLogger(self.config.log_file_path)
+        self._log_load_warnings()
         self.simulator = simulator or ActivitySimulator(self.config, self.logger)
         self._sim_thread: Optional[threading.Thread] = None
         self._icon: Optional[pystray.Icon] = None
+        # Serialises start/stop/apply, which run on the UI and settings threads
+        self._lock = threading.RLock()
+        self._settings_process: Optional[subprocess.Popen] = None
+
+    def _log_load_warnings(self) -> None:
+        for warning in self.config_manager.load_warnings:
+            self.logger.log_warning(f"Config: {warning}")
 
     # ------------------------------------------------------------------
     # Icon helpers
@@ -94,33 +115,73 @@ class TrayIcon:
         self._icon.menu = self._build_menu()
 
     # ------------------------------------------------------------------
+    # Simulator lifecycle
+    # ------------------------------------------------------------------
+
+    def _run_simulator(self, simulator: ActivitySimulator) -> None:
+        """Thread target: run the loop and refresh the tray when it ends.
+
+        The loop can end on its own (repeated failures, unexpected errors), so
+        the icon must not keep claiming it is running.
+        """
+        try:
+            simulator.start_loop()
+        except Exception as e:
+            self.logger.log_error(f"Idle prevention failed: {e}", exc_info=True)
+        finally:
+            # The loop is over however it ended (see the flag set in _start)
+            simulator._running = False
+            _on_ui_thread(self._update_icon)
+
+    def _start(self) -> None:
+        """Start a fresh simulator with the latest configuration."""
+        self.simulator = ActivitySimulator(self.config, self.logger)
+        # Mark as running before the thread starts so the menu is correct
+        # immediately; start_loop() sets the same flag itself.
+        self.simulator._running = True
+        self._sim_thread = threading.Thread(
+            target=self._run_simulator, args=(self.simulator,), daemon=True
+        )
+        self._sim_thread.start()
+
+    def _stop(self) -> None:
+        """Stop the simulator and wait for its thread."""
+        if self.simulator.is_running:
+            self.simulator.stop()
+        if self._sim_thread:
+            self._sim_thread.join(timeout=5)
+            self._sim_thread = None
+
+    def _replace_logger(self, log_file_path: str) -> None:
+        if self.logger.log_file_path != log_file_path:
+            self.logger.close()
+            self.logger = ActivityLogger(log_file_path)
+
+    # ------------------------------------------------------------------
     # Actions
     # ------------------------------------------------------------------
 
     def _toggle(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
         """Start or stop idle prevention."""
-        if self.simulator.is_running:
-            self.simulator.stop()
-            if self._sim_thread:
-                self._sim_thread.join(timeout=5)
-                self._sim_thread = None
-        else:
-            # Reload config in case it changed
-            self.config = self.config_manager.load()
-            self.simulator = ActivitySimulator(self.config, self.logger)
-            self._sim_thread = threading.Thread(
-                target=self.simulator.start_loop, daemon=True
-            )
-            self._sim_thread.start()
+        with self._lock:
+            if self.simulator.is_running:
+                self._stop()
+            else:
+                # Reload config in case it changed
+                self.config = self.config_manager.load()
+                self._replace_logger(self.config.log_file_path)
+                self._log_load_warnings()
+                self._start()
         self._update_icon()
 
     def _toggle_silent(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
         """Toggle silent mode."""
-        self.config = self.config_manager.update(
-            silent_mode=not self.config.silent_mode
-        )
-        # Apply to running simulator
-        self.simulator.config = self.config
+        with self._lock:
+            self.config = self.config_manager.update(
+                silent_mode=not self.config_manager.load().silent_mode
+            )
+            # Apply to running simulator
+            self.simulator.config = self.config
         self._update_icon()
 
     def _open_settings(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
@@ -128,48 +189,49 @@ class TrayIcon:
 
         tkinter needs its own ``NSApplication`` on macOS, so we run it
         in a child process.  When the subprocess exits we reload the
-        config in case the user saved changes.
+        config in case the user saved changes.  Only one window is open
+        at a time.
         """
-        def _run() -> None:
-            if getattr(sys, "frozen", False):
-                # PyInstaller bundle: re-invoke ourselves with --settings
-                subprocess.run([sys.executable, "--settings"])
-            else:
-                subprocess.run(
-                    [sys.executable, "-m", "eternal_green.settings_window"],
-                )
+        if self._settings_process is not None and self._settings_process.poll() is None:
+            return
+
+        if getattr(sys, "frozen", False):
+            # PyInstaller bundle: re-invoke ourselves with --settings
+            cmd = [sys.executable, "--settings"]
+        else:
+            cmd = [sys.executable, "-m", "eternal_green.settings_window"]
+        process = self._settings_process = subprocess.Popen(cmd)
+
+        def _wait() -> None:
+            process.wait()
             # Reload config — the user may have saved changes
             new_config = self.config_manager.load()
             if new_config != self.config:
                 self._apply_config(new_config)
+                _on_ui_thread(self._update_icon)
 
-        threading.Thread(target=_run, daemon=True).start()
+        threading.Thread(target=_wait, daemon=True).start()
 
     def _apply_config(self, new_config: EternalGreenConfig) -> None:
         """Apply a new configuration, restarting the simulator if needed."""
-        self.config = new_config
-
-        if self.simulator.is_running:
-            self.simulator.stop()
-            if self._sim_thread:
-                self._sim_thread.join(timeout=5)
-
-            self.logger = ActivityLogger(new_config.log_file_path)
-            self.simulator = ActivitySimulator(new_config, self.logger)
-            self._sim_thread = threading.Thread(
-                target=self.simulator.start_loop, daemon=True
-            )
-            self._sim_thread.start()
-        else:
-            self.logger = ActivityLogger(new_config.log_file_path)
-            self.simulator = ActivitySimulator(new_config, self.logger)
+        with self._lock:
+            self.config = new_config
+            self._log_load_warnings()
+            was_running = self.simulator.is_running
+            self._stop()
+            self._replace_logger(new_config.log_file_path)
+            if was_running:
+                self._start()
+            else:
+                self.simulator = ActivitySimulator(new_config, self.logger)
 
     def _quit(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
         """Stop simulator and exit tray."""
-        if self.simulator.is_running:
-            self.simulator.stop()
-            if self._sim_thread:
-                self._sim_thread.join(timeout=5)
+        with self._lock:
+            self._stop()
+        if self._settings_process is not None and self._settings_process.poll() is None:
+            self._settings_process.terminate()
+        self.logger.close()
         icon.stop()
 
     # ------------------------------------------------------------------
@@ -198,11 +260,7 @@ def main() -> None:
         _run_standalone()
         return
 
-    config_manager = ConfigManager()
-    config = config_manager.load()
-    logger = ActivityLogger(config.log_file_path)
-    simulator = ActivitySimulator(config, logger)
-    tray = TrayIcon(config_manager, simulator, logger)
+    tray = TrayIcon(ConfigManager())
     tray.run()
 
 

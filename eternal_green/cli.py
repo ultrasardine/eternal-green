@@ -239,8 +239,12 @@ class CLIInterface:
         # Always reload config from disk to pick up any menu edits
         self._config = self.config_manager.load()
 
+        self._print_load_warnings()
+
         # Refresh logger if log_file_path changed or logger doesn't exist
         if self.logger is None or self.logger.log_file_path != self._config.log_file_path:
+            if self.logger is not None:
+                self.logger.close()
             self.logger = ActivityLogger(self._config.log_file_path)
 
         # Always create a fresh simulator with the latest config
@@ -251,13 +255,26 @@ class CLIInterface:
             self.simulator.start_loop()
         except KeyboardInterrupt:
             pass
+        except Exception as e:
+            # Never let a simulator failure kill the CLI; return to the menu.
+            print(f"\n✗ Idle prevention failed: {e}")
+            if self.logger:
+                self.logger.log_error(f"Idle prevention failed: {e}", exc_info=True)
         finally:
             print("\nIdle prevention stopped.")
     
+    def _print_load_warnings(self) -> None:
+        """Tell the user about config problems that load() repaired."""
+        for warning in self.config_manager.load_warnings:
+            print(f"⚠ Config: {warning}")
+            if self.logger:
+                self.logger.log_warning(f"Config: {warning}")
+
     def run(self) -> None:
         """Main loop for CLI interaction."""
         # Load config on startup
         self._config = self.config_manager.load()
+        self._print_load_warnings()
         
         running = True
         while running:
@@ -277,24 +294,15 @@ def main() -> None:
     """CLI entry point for eternal-green.
     
     This function is called when running via the 'eternal-green' command
-    installed by the package.
+    installed by the package, or via ``python -m eternal_green``.
     """
-    from eternal_green.config import ConfigManager
-    from eternal_green.logger import ActivityLogger
-    from eternal_green.simulator import ActivitySimulator
-    
-    # Initialize configuration manager
     config_manager = ConfigManager()
-    
-    # Load configuration
     config = config_manager.load()
-    
-    # Initialize logger with configured path
     logger = ActivityLogger(config.log_file_path)
-    
-    # Initialize activity simulator
-    simulator = ActivitySimulator(config, logger)
-    
-    # Initialize and run CLI
-    cli = CLIInterface(config_manager, simulator, logger)
-    cli.run()
+    cli = CLIInterface(config_manager, ActivitySimulator(config, logger), logger)
+    try:
+        cli.run()
+    finally:
+        logger.close()
+        if cli.logger is not logger:
+            cli.logger.close()

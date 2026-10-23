@@ -40,6 +40,8 @@ a = Analysis(
         "CoreFoundation",
         "Quartz",
         "Quartz.CoreGraphics",
+        # Marshals tray updates onto the AppKit main thread
+        "PyObjCTools.AppHelper",
         # rubicon ObjC bridge (used by mouseinfo)
         "rubicon",
         "rubicon.objc",

@@ -97,7 +97,7 @@ The CLI provides a menu with options to:
 5. Edit log file path
 6. Toggle random interval (randomize timing for pattern prevention)
 7. Edit random interval range (set min/max seconds)
-8. Edit movement pattern (choose from: `standard`, `random_direction`, `return_to_source`, `bounce`)
+8. Edit movement pattern (choose from: `standard`, `return_to_source`, `bounce`)
 9. Start idle prevention
 10. Exit
 
@@ -106,12 +106,13 @@ Configuration is always reloaded from disk when you start idle prevention, so an
 ### Console Output
 
 The application provides real-time feedback during operation:
-- `▶ Starting idle prevention loop (interval: Xs)` - When simulation starts
+- `▶ Starting idle prevention (pattern, interval: Xs) — acts only while you're idle` - When simulation starts
 - `✓ [pattern] detail (mode), next in Xs` - Each successful activity, e.g.:
   - `✓ [standard] moved 2px (silent), next in 60s`
-  - `✓ [random_direction] moved 2px (bounce-clamped) (with keystroke), next in 45s`
   - `✓ [return_to_source] excursion 40px and returned (silent), next in 90s`
-- `✗ Error during activity simulation: ...` - If errors occur
+- `⏸ You're active — waiting for Xs of inactivity.` - When it holds back because you're using the computer
+- `↗ Cursor was in a screen corner — moved it to a safe spot.` - When the cursor was parked in a corner
+- `✗ Error during activity simulation: ...` - If errors occur (after 5 in a row it stops and says why)
 - `■ Graceful shutdown initiated` - When stopping
 
 All activity is also logged to the configured log file (default: `~/.eternal_green.log`).
@@ -255,7 +256,7 @@ Configuration is stored in `~/.eternal_green_config.json` with the following opt
 | `random_interval` | bool | false | If true, randomizes interval between min and max range |
 | `interval_range_min` | int | 10 | Minimum seconds for random interval (min: 10, max: 3600) |
 | `interval_range_max` | int | 60 | Maximum seconds for random interval (min: 10, max: 3600) |
-| `movement_pattern` | str | `standard` | Movement pattern for mouse simulation. Valid values: `standard`, `random_direction`, `return_to_source` (visible animated excursion then glide back), `bounce` |
+| `movement_pattern` | str | `standard` | Movement pattern for mouse simulation. Valid values: `standard` (small diagonal nudge), `return_to_source` (visible animated excursion then glide back), `bounce` (continuous glide while you're away). The former `random_direction` is loaded as `standard`. |
 
 ### Example Configuration File
 
@@ -309,13 +310,21 @@ The `.app` bundle is built with [PyInstaller](https://pyinstaller.org/) using th
 
 The simulator includes **movement verification** — after each mouse move it checks whether the cursor actually moved. If the position is unchanged (a strong signal that Accessibility permissions are missing), a `RuntimeError` is raised immediately rather than silently failing.
 
-### Retina / HiDPI Displays
+### Multiple Displays
 
-The `standard` movement pattern issues a **relative** move (`pyautogui.move`) rather than an absolute one. On Retina and other scaled displays the coordinate space read by `pyautogui.position()`/`size()` (logical points) differs from the space consumed by an absolute `pyautogui.moveTo` (backing-scaled physical pixels), which could cause a small `movement_pixels` intent to land far across the screen. Expressing the move as a relative delta displaces the cursor by exactly the configured `movement_pixels` per axis regardless of display scaling, while still honoring the bounce/edge clamping that keeps the cursor out of screen corners.
+Movements always stay on the display the cursor is on. On macOS the display bounds come from Quartz, so a cursor on a secondary monitor is nudged in place rather than pulled back onto the main display. Elsewhere, a cursor outside the primary display is nudged within a small box around its position.
 
-### Fail-Safe Behavior
+### Only Acts While You're Idle
 
-`pyautogui`'s fail-safe is respected at all times: if you move the mouse to a screen corner during simulation, `pyautogui.FailSafeException` is raised and immediately propagated — it is never suppressed by the error-handling logic. This ensures you can always regain control of your machine.
+Eternal Green never moves the mouse or presses keys while you're using the computer. Each cycle waits until there has been no input for the configured interval (on macOS this is the system idle time and includes the keyboard; elsewhere it is estimated from cursor movement). The `bounce` glide stops as soon as you move the mouse or press a key, and resumes after another interval of inactivity.
+
+### Stopping & Safety
+
+Stop idle prevention from the tray menu (**Stop** / **Quit**) or with **Ctrl+C** in the CLI.
+
+pyautogui's corner fail-safe (which stops a script when the cursor touches a screen corner) is turned off while Eternal Green acts: it fired before *every* action whenever the cursor merely rested in a corner, stopping idle prevention for no reason. Instead, the cursor is kept at least 10px from every display edge, a cursor found in a corner is moved to a safe spot, and the app always yields to you (see above), so it never fights you for the mouse.
+
+If the configuration file contains invalid values, they are replaced by their defaults, the original file is kept as `~/.eternal_green_config.json.bak`, and a warning is shown. The log file rotates at 1 MB (3 backups).
 
 ## Examples
 
@@ -406,7 +415,7 @@ if success:
 
 # Simulate with timing info for next activity
 success = simulator.simulate_activity(next_interval=120)
-# Output: "✓ [random_direction] moved 15px (bounce-clamped) (silent), next in 120s"
+# Output: "✓ [standard] moved 15px (silent), next in 120s"
 ```
 
 ## Requirements

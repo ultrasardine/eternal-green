@@ -3,7 +3,7 @@
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
-from hypothesis import given, strategies as st, settings, assume
+from hypothesis import given, strategies as st, settings
 
 from eternal_green.config import EternalGreenConfig, ConfigManager, VALID_MOVEMENT_PATTERNS
 from eternal_green.cli import CLIInterface
@@ -105,3 +105,17 @@ def test_edit_movement_pattern_accepts_valid_patterns():
             assert result is True
             reloaded = manager.load()
             assert reloaded.movement_pattern == target_pattern
+
+
+def test_start_simulator_survives_unexpected_error(temp_config_path, temp_log_path):
+    """An exception from the simulator returns to the menu instead of crashing."""
+    from unittest.mock import patch
+    from eternal_green.config import ConfigManager
+    from eternal_green.simulator import ActivitySimulator
+
+    config_manager = ConfigManager(temp_config_path)
+    config_manager.update(log_file_path=str(temp_log_path))
+    cli = CLIInterface(config_manager)
+
+    with patch.object(ActivitySimulator, "start_loop", side_effect=RuntimeError("boom")):
+        cli._start_simulator()  # must not raise

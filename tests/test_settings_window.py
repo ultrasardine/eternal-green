@@ -38,7 +38,6 @@ class TestSettingsWindowInit:
         assert hasattr(settings_window, "VALID_MOVEMENT_PATTERNS")
         assert settings_window.VALID_MOVEMENT_PATTERNS == (
             "standard",
-            "random_direction",
             "return_to_source",
             "bounce",
         )
@@ -150,7 +149,7 @@ class TestSettingsWindowOnSave:
             window._log_var = MagicMock()
             window._log_var.get.return_value = "~/.eternal_green.log"
             window._pattern_var = MagicMock()
-            window._pattern_var.get.return_value = "random_direction"
+            window._pattern_var.get.return_value = "standard"
 
             window._window = MagicMock()
 
@@ -191,8 +190,6 @@ class TestSettingsWindowComboboxSetup:
             ):
                 with patch("tkinter.tk", mock_tk, create=True):
                     # Import fresh inside the mocked context
-                    import tkinter as tk
-                    from tkinter import ttk
 
                     # Patch the modules used inside _build_ui
                     with (
@@ -212,7 +209,6 @@ class TestSettingsWindowComboboxSetup:
             # The combobox should use VALID_MOVEMENT_PATTERNS as values.
             assert list(VALID_MOVEMENT_PATTERNS) == [
                 "standard",
-                "random_direction",
                 "return_to_source",
                 "bounce",
             ]
@@ -221,9 +217,9 @@ class TestSettingsWindowComboboxSetup:
         """The values passed to the combobox match VALID_MOVEMENT_PATTERNS exactly."""
         # The design specifies: values=list(VALID_MOVEMENT_PATTERNS), state="readonly"
         # We verify the constant used in the implementation is correct
-        assert len(VALID_MOVEMENT_PATTERNS) == 4
+        assert len(VALID_MOVEMENT_PATTERNS) == 3
         assert "standard" in VALID_MOVEMENT_PATTERNS
-        assert "random_direction" in VALID_MOVEMENT_PATTERNS
+        assert "random_direction" not in VALID_MOVEMENT_PATTERNS
         assert "return_to_source" in VALID_MOVEMENT_PATTERNS
         assert "bounce" in VALID_MOVEMENT_PATTERNS
 
@@ -282,3 +278,25 @@ class TestSettingsWindowOnSaveCallback:
             callback.assert_called_once()
             new_config = callback.call_args[0][0]
             assert new_config.movement_pattern == "return_to_source"
+
+
+def test_on_save_non_numeric_field_shows_error_instead_of_crashing(temp_config_path):
+    """An empty or non-numeric spinbox makes IntVar.get() raise TclError."""
+    import tkinter as tk
+
+    manager = ConfigManager(config_path=temp_config_path)
+    manager.load()
+    window = SettingsWindow(config_manager=manager)
+    for name in ("_pixels_var", "_silent_var", "_random_var", "_range_min_var",
+                 "_range_max_var", "_log_var", "_pattern_var"):
+        setattr(window, name, MagicMock())
+    window._interval_var = MagicMock()
+    window._interval_var.get.side_effect = tk.TclError('expected floating-point number but got ""')
+    window._window = MagicMock()
+    manager.update = MagicMock()
+
+    with patch("tkinter.messagebox.showerror") as showerror:
+        window._on_save()
+
+    showerror.assert_called_once()
+    manager.update.assert_not_called()
